@@ -551,24 +551,11 @@ function startTypingWithData(textData) {
     // --- SỰ KIỆN ---
     typingTextarea.addEventListener('input', handleTextareaInput);
 
-    // Chặn phím mũi tên/Home/End để con trỏ thật không tự do di chuyển ngoài tầm kiểm soát
-    // (tránh desync giữa caret ảo và caret thật). Việc "quay lại sửa" thực hiện bằng click
-    // vào đúng ký tự cần sửa (xử lý bên dưới) — gõ đè ký tự đúng rồi tự động tiếp tục
-    // gõ về phía sau, không mất phần đã gõ tiếp theo.
-    typingTextarea.addEventListener('keydown', (e) => {
-        const blockedNav = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'];
-        if (blockedNav.includes(e.key)) { e.preventDefault(); return; }
-        if (e.key === 'Backspace') {
-            const len = typingTextarea.value.length;
-            const pos = typingTextarea.selectionStart;
-            if (pos < len) {
-                // Đang ở giữa (chế độ sửa tại chỗ) -> không cho xoá lùi vì sẽ làm lệch
-                // vị trí ký tự với văn bản mẫu. Cứ gõ đè để sửa, gõ hết là tự về cuối.
-                e.preventDefault();
-            }
-            // else: đang ở cuối (gõ bình thường) -> để trình duyệt tự xoá ký tự cuối như cũ
-        }
-    });
+    // Cho phép con trỏ thật di chuyển tự do (mũi tên, Home/End, click, chọn vùng...)
+    // và cho phép Backspace/Delete/chèn ký tự ở BẤT KỲ vị trí nào — giống hệt một
+    // textarea/Notepad bình thường. Caret ảo (virtual-caret) chỉ có nhiệm vụ vẽ lại
+    // đúng vị trí của con trỏ thật lên trên lớp hiển thị (xem listener 'selectionchange'
+    // ở cuối file) — không còn ép chế độ "chọn 1 ký tự để gõ đè" như trước nữa.
 
     // Click để focus vào vùng gõ (click ra ngoài chữ)
     textDisplay.addEventListener('click', () => {
@@ -577,22 +564,10 @@ function startTypingWithData(textData) {
         }
     });
 
-    // Click trực tiếp vào một ký tự ĐÃ GÕ (đúng hoặc sai) để đưa con trỏ về đó và SỬA TẠI CHỖ.
-    // Không xoá phần đã gõ phía sau — gõ 1 ký tự sẽ "đè" lên đúng vị trí đó, con trỏ tự
-    // nhảy sang ô kế tiếp để có thể sửa liên tiếp nhiều ký tự, và khi tới cuối thì tự động
-    // quay lại chế độ gõ tiếp bình thường.
-    // (displayContainer có pointer-events:none nên mọi click đều rơi vào typingTextarea ở trên;
-    // ta dò toạ độ click khớp với span ký tự tương ứng.)
-    typingTextarea.addEventListener('mousedown', (e) => {
-        if (typingState.isFinished) return;
-        const len = typingTextarea.value.length;
-        const idx = findCharIndexAtPoint(e.clientX, e.clientY);
-        if (idx === null || idx >= len) return; // chỉ cho sửa phần đã gõ, không cho nhảy tới phần chưa gõ
-        e.preventDefault();
-        typingTextarea.focus();
-        typingTextarea.setSelectionRange(idx, Math.min(idx + 1, len));
-        updateVirtualCaret();
-    });
+    // Click vào một ký tự bất kỳ trong phần đã gõ để đưa con trỏ THẬT về đúng đó —
+    // để trình duyệt tự xử lý (textarea và lớp hiển thị dùng chung font/kích thước
+    // nên toạ độ click luôn khớp đúng ký tự). Từ đó gõ/sửa/xoá diễn ra bình thường
+    // như Notepad; caret ảo sẽ tự cập nhật theo vị trí con trỏ thật (xem 'selectionchange').
 
     typingTextarea.addEventListener('paste', (e) => e.preventDefault());
     typingTextarea.addEventListener('copy', (e) => e.preventDefault());
@@ -634,25 +609,9 @@ function handleTextareaInput() {
     }
 
     syncFromValue();
-    syncSelectionMode();
 
     if (typingState.currentIndex === typingState.chars.length) {
         finishTyping();
-    }
-}
-
-// Giữ nguyên tắc: nếu con trỏ đang ở giữa văn bản đã gõ (chế độ sửa tại chỗ), luôn CHỌN SẴN
-// đúng 1 ký tự kế tiếp — nhờ vậy khi người dùng gõ phím tiếp theo, trình duyệt sẽ tự "gõ đè"
-// (ghi đè lên vùng đang chọn) thay vì chèn thêm ký tự làm lệch vị trí với văn bản mẫu.
-// Khi con trỏ đã tới cuối văn bản đã gõ thì quay lại trạng thái gõ nối bình thường.
-function syncSelectionMode() {
-    if (!typingTextarea) return;
-    const len = typingTextarea.value.length;
-    const pos = typingTextarea.selectionStart;
-    if (pos < len) {
-        typingTextarea.setSelectionRange(pos, pos + 1);
-    } else {
-        typingTextarea.setSelectionRange(len, len);
     }
 }
 
@@ -713,19 +672,6 @@ function syncFromValue() {
         updateWpmHistory(Date.now() - typingState.startTime);
     }
     updateVirtualCaret();
-}
-
-// Tìm span ký tự tại toạ độ (x, y) trên màn hình — dùng cho tính năng
-// click vào ký tự cũ để quay lại sửa (vì displayContainer có pointer-events:none
-// nên không thể gắn onclick trực tiếp lên từng span).
-function findCharIndexAtPoint(x, y) {
-    const spans = typingState.charSpans;
-    if (!spans) return null;
-    for (let i = 0; i < spans.length; i++) {
-        const r = spans[i].getBoundingClientRect();
-        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return i;
-    }
-    return null;
 }
 
 function updateVirtualCaret() {
@@ -1166,6 +1112,15 @@ popupPassword.addEventListener('keydown', e => { if (e.key === 'Enter') checkPas
 
 window.addEventListener('resize', () => {
     if (typingScreen.classList.contains('active')) {
+        updateVirtualCaret();
+    }
+});
+
+// Con trỏ thật giờ di chuyển tự do (click, mũi tên, Home/End...) như một textarea
+// bình thường. Lắng nghe 'selectionchange' để caret ẢO luôn bám đúng theo caret THẬT
+// bất kể do đâu mà nó di chuyển, không chỉ khi gõ thêm ký tự.
+document.addEventListener('selectionchange', () => {
+    if (typingTextarea && document.activeElement === typingTextarea) {
         updateVirtualCaret();
     }
 });
