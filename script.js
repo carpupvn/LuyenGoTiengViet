@@ -446,7 +446,7 @@ async function openSecretText() {
 }
 
 // ============================================================
-//  KHỞI TẠO GÕ VỚI DỮ LIỆU VĂN BẢN (ĐỒNG BỘ)
+//  KHỞI TẠO GÕ VỚI DỮ LIỆU VĂN BẢN (ĐỒNG BỘ HOÀN TOÀN)
 // ============================================================
 function startTypingWithData(textData) {
     const content = textData.content;
@@ -477,6 +477,7 @@ function startTypingWithData(textData) {
         displayContainer = null;
     }
 
+    // Reset textDisplay
     textDisplay.innerHTML = '';
     textDisplay.style.position = 'relative';
     textDisplay.style.padding = '0';
@@ -486,7 +487,18 @@ function startTypingWithData(textData) {
     textDisplay.style.overflow = 'hidden';
     textDisplay.style.height = 'auto';
 
-    // --- DISPLAY CONTAINER ---
+    // --- Tạo container chính để chứa cả hai lớp ---
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = `
+        position: relative;
+        width: 100%;
+        height: 100%;
+        min-height: 180px;
+        overflow: auto;
+    `;
+    textDisplay.appendChild(wrapper);
+
+    // --- DISPLAY CONTAINER (lớp hiển thị) ---
     displayContainer = document.createElement('div');
     displayContainer.className = 'display-container';
     Object.assign(displayContainer.style, {
@@ -505,10 +517,14 @@ function startTypingWithData(textData) {
         overflowWrap: 'break-word',
         overflow: 'auto',
         pointerEvents: 'none',
-        zIndex: '5'
+        zIndex: '5',
+        margin: '0',
+        border: 'none',
+        background: 'transparent'
     });
-    textDisplay.appendChild(displayContainer);
+    wrapper.appendChild(displayContainer);
 
+    // Thêm các span
     typingState.chars.forEach((ch, idx) => {
         const span = document.createElement('span');
         span.className = 'char dim';
@@ -519,7 +535,7 @@ function startTypingWithData(textData) {
     });
     typingState.charSpans = displayContainer.querySelectorAll('.char');
 
-    // --- TEXTAREA ---
+    // --- TEXTAREA (lớp nhập liệu trong suốt) ---
     typingTextarea = document.createElement('textarea');
     typingTextarea.className = 'typing-textarea';
     Object.assign(typingTextarea.style, {
@@ -542,17 +558,18 @@ function startTypingWithData(textData) {
         overflowWrap: 'break-word',
         overflow: 'auto',
         color: 'transparent',
-        caretColor: 'transparent !important',
-        zIndex: '10'
+        caretColor: 'transparent',
+        zIndex: '10',
+        margin: '0'
     });
     typingTextarea.setAttribute('spellcheck', 'false');
     typingTextarea.setAttribute('autocomplete', 'off');
     typingTextarea.setAttribute('autocorrect', 'off');
     typingTextarea.setAttribute('autocapitalize', 'off');
     typingTextarea.disabled = false;
-    textDisplay.appendChild(typingTextarea);
+    wrapper.appendChild(typingTextarea);
 
-    // Ẩn scrollbar textarea
+    // Ẩn scrollbar của textarea
     const styleId = 'hide-textarea-scrollbar';
     if (!document.getElementById(styleId)) {
         const style = document.createElement('style');
@@ -570,9 +587,13 @@ function startTypingWithData(textData) {
         caretEl = document.createElement('div');
         caretEl.id = 'virtualCaret';
         caretEl.className = 'virtual-caret';
-        textDisplay.appendChild(caretEl);
+        wrapper.appendChild(caretEl);
     } else {
         caretEl.classList.remove('hidden');
+        // Đảm bảo caret nằm trong wrapper
+        if (caretEl.parentNode !== wrapper) {
+            wrapper.appendChild(caretEl);
+        }
     }
 
     // --- START NOTICE ---
@@ -582,11 +603,15 @@ function startTypingWithData(textData) {
         notice.id = 'startNotice';
         notice.className = 'start-notice';
         notice.innerHTML = `<span class="start-message">⌨️ <strong>Bắt đầu gõ</strong> để tính thời gian</span>`;
-        textDisplay.appendChild(notice);
+        wrapper.appendChild(notice);
     } else {
         notice.classList.remove('hidden');
+        if (notice.parentNode !== wrapper) {
+            wrapper.appendChild(notice);
+        }
     }
 
+    // --- SỰ KIỆN ---
     typingTextarea.addEventListener('input', handleTextareaInput);
     textDisplay.addEventListener('click', () => {
         if (typingTextarea && !typingTextarea.disabled) {
@@ -605,6 +630,9 @@ function startTypingWithData(textData) {
     typingTextarea.focus();
 }
 
+// ============================================================
+//  CÁC HÀM XỬ LÝ GÕ
+// ============================================================
 function startTypingSession() {
     if (started) return;
     started = true;
