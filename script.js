@@ -18,8 +18,6 @@ const defaultData = {
 };
 
 let appData = loadData();
-let publicTexts = []; // Lưu danh sách văn bản công khai
-
 let typingState = {
     textId: null,
     content: '',
@@ -38,6 +36,7 @@ let typingState = {
 };
 
 let started = false;
+let publicTexts = [];
 
 // ============================================================
 //  DOM REFS
@@ -134,17 +133,16 @@ function saveData(data) {
 }
 
 // ============================================================
-//  LẤY BASE PATH (cho subfolder)
+//  LẤY BASE PATH CHO GITHUB PAGES
 // ============================================================
 function getBasePath() {
     const path = window.location.pathname;
-    // Nếu đang ở root hoặc localhost, trả về rỗng
+    // Nếu đang ở root (hoặc localhost), trả về rỗng
     if (path === '/' || path === '') return '';
-    // Nếu path kết thúc bằng '/' thì bỏ nó đi
+    // Nếu path kết thúc bằng '/', bỏ nó đi
     const base = path.replace(/\/$/, '');
     return base;
 }
-
 const BASE = getBasePath();
 
 // ============================================================
@@ -153,14 +151,15 @@ const BASE = getBasePath();
 async function fetchPublicTexts() {
     try {
         const url = `${BASE}/public/texts.json`;
-        console.log('Fetching public texts:', url);
+        console.log('📥 Fetching texts.json từ:', url);
         const res = await fetch(url);
-        if (!res.ok) throw new Error('Không tìm thấy texts.json');
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         const list = await res.json();
         publicTexts = list;
+        console.log('✅ Đã tải danh sách văn bản:', publicTexts);
         renderPublicTexts();
     } catch (e) {
-        console.warn('Không thể tải danh sách văn bản công khai:', e);
+        console.warn('❌ Không thể tải danh sách văn bản:', e);
         publicTexts = [];
         renderPublicTexts();
     }
@@ -169,12 +168,14 @@ async function fetchPublicTexts() {
 async function fetchTextByFilename(filename) {
     try {
         const url = `${BASE}/public/${filename}`;
-        console.log('Fetching text:', url);
+        console.log('📥 Fetching văn bản từ:', url);
         const res = await fetch(url);
-        if (!res.ok) throw new Error('Không tìm thấy file');
-        return await res.json();
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const data = await res.json();
+        console.log('✅ Đã tải văn bản:', data.name);
+        return data;
     } catch (e) {
-        console.warn('Lỗi tải văn bản:', e);
+        console.warn('❌ Lỗi tải văn bản:', e);
         return null;
     }
 }
@@ -182,12 +183,14 @@ async function fetchTextByFilename(filename) {
 async function fetchSecretText(code) {
     try {
         const url = `${BASE}/secret/${code}.json`;
-        console.log('Fetching secret:', url);
+        console.log('📥 Fetching secret từ:', url);
         const res = await fetch(url);
-        if (!res.ok) throw new Error('Không tìm thấy văn bản bí mật');
-        return await res.json();
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const data = await res.json();
+        console.log('✅ Đã tải văn bản bí mật:', data.name);
+        return data;
     } catch (e) {
-        console.warn('Lỗi tải secret:', e);
+        console.warn('❌ Lỗi tải secret:', e);
         return null;
     }
 }
@@ -467,7 +470,6 @@ function startTypingWithData(textData) {
     }
     started = false;
 
-    // Xóa textarea cũ
     if (typingTextarea) {
         typingTextarea.remove();
         typingTextarea = null;
@@ -477,7 +479,6 @@ function startTypingWithData(textData) {
         displayContainer = null;
     }
 
-    // Tạo display container
     displayContainer = document.createElement('div');
     displayContainer.className = 'display-container';
     textDisplay.innerHTML = '';
@@ -499,7 +500,6 @@ function startTypingWithData(textData) {
     });
     typingState.charSpans = displayContainer.querySelectorAll('.char');
 
-    // Tạo textarea – cho phép nhập ngay
     typingTextarea = document.createElement('textarea');
     typingTextarea.className = 'typing-textarea';
     typingTextarea.setAttribute('spellcheck', 'false');
@@ -509,7 +509,6 @@ function startTypingWithData(textData) {
     typingTextarea.disabled = false;
     textDisplay.appendChild(typingTextarea);
 
-    // Thêm caret ảo
     let virtualCaretEl = document.getElementById('virtualCaret');
     if (!virtualCaretEl) {
         virtualCaretEl = document.createElement('div');
@@ -520,7 +519,6 @@ function startTypingWithData(textData) {
         virtualCaretEl.classList.remove('hidden');
     }
 
-    // Thêm start-notice
     let notice = document.getElementById('startNotice');
     if (!notice) {
         notice = document.createElement('div');
@@ -532,17 +530,13 @@ function startTypingWithData(textData) {
         notice.classList.remove('hidden');
     }
 
-    // Sự kiện input
     typingTextarea.addEventListener('input', handleTextareaInput);
-
-    // Click vào textDisplay để focus
     textDisplay.addEventListener('click', () => {
         if (typingTextarea && !typingTextarea.disabled) {
             typingTextarea.focus();
         }
     });
 
-    // Chặn paste/copy/cut
     typingTextarea.addEventListener('paste', (e) => e.preventDefault());
     typingTextarea.addEventListener('copy', (e) => e.preventDefault());
     typingTextarea.addEventListener('cut', (e) => e.preventDefault());
@@ -554,21 +548,16 @@ function startTypingWithData(textData) {
     typingTextarea.focus();
 }
 
-// ============================================================
-//  HÀM XỬ LÝ GÕ
-// ============================================================
 function startTypingSession() {
     if (started) return;
     started = true;
 
-    // Ẩn notice
     const notice = document.getElementById('startNotice');
     if (notice) {
         notice.classList.add('hidden');
         setTimeout(() => notice.remove(), 400);
     }
 
-    // Bắt đầu đếm thời gian
     typingState.startTime = Date.now();
     typingState.timerInterval = setInterval(updateTimer, 100);
 }
@@ -576,8 +565,7 @@ function startTypingSession() {
 function handleTextareaInput() {
     if (typingState.isFinished) return;
 
-    // Nếu chưa bắt đầu, bắt đầu ngay khi có ký tự đầu tiên
-    if (!started && typingTextarea.value.length > 0) {
+    if (!started) {
         startTypingSession();
     }
 
