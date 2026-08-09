@@ -1,0 +1,14 @@
+[
+    {
+        "id": "text1",
+        "name": "Văn bản mẫu",
+        "difficulty": 0,
+        "filename": "vanbanmau.json"
+    },
+    {
+        "id": "lauracafe",
+        "name": "Laura cà phê",
+        "difficulty": 1,
+        "filename": "lauracafe.json"
+    }
+]

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Luyện gõ tiếng Việt</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div class="container">
+        <!-- HOME -->
+        <div id="homeScreen" class="screen active">
+            <h1>⌨️ Luyện gõ</h1>
+            <p>Tiếng Việt · Tốc độ · Chính xác</p>
+            <button class="btn" id="goTypingBtn">Vào gõ →</button>
+        </div>
+
+        <!-- SELECT -->
+        <div id="selectScreen" class="screen">
+            <div class="header">
+                <h2>Chọn văn bản</h2>
+                <button class="btn btn-outline small" id="backHomeFromSelect">← Quay lại</button>
+            </div>
+            <div class="secret-area">
+                <input type="text" id="secretCodeInput" placeholder="Nhập mã văn bản bí mật" />
+                <button class="btn small" id="secretGoBtn">Mở</button>
+            </div>
+            <div id="publicTextList" class="text-list"></div>
+        </div>
+
+        <!-- TYPING -->
+        <div id="typingScreen" class="screen">
+            <div class="typing-header">
+                <div class="info">
+                    <span id="typingTitle">Văn bản</span>
+                    <span id="typingTimer">⏱ 0s</span>
+                    <span id="typingWpm">⚡ 0 WPM</span>
+                    <span id="typingLpm">⌨️ 0 LPM</span>
+                    <span id="typingAccuracy">🎯 100%</span>
+                </div>
+                <button class="btn btn-outline small" id="abortTypingBtn">Thoát</button>
+            </div>
+            <div class="text-display" id="textDisplay">
+                <div class="start-notice" id="startNotice">
+                    <span class="start-message">⌨️ <strong>Bắt đầu gõ</strong> để tính thời gian</span>
+                </div>
+                <div class="virtual-caret" id="virtualCaret"></div>
+            </div>
+            <div class="typing-stats">
+                <span>Lỗi: <strong id="errorCount">0</strong></span>
+                <span>Đã gõ: <strong id="typedCount">0</strong></span>
+                <span>Còn lại: <strong id="remainingCount">0</strong></span>
+            </div>
+            <p class="hint">⚠️ Gõ sai vẫn tính lỗi. Dùng Backspace để xóa và sửa.</p>
+        </div>
+
+        <!-- RESULT -->
+        <div id="resultScreen" class="screen">
+            <h2>📊 Kết quả</h2>
+            <div id="resultTextName" style="color:var(--text-muted); margin-bottom:16px;"></div>
+            <div class="result-grid" id="resultStats"></div>
+            <div id="chartContainer"><canvas id="speedChart"></canvas></div>
+            <div>
+                <p style="margin:12px 0 6px; font-weight:700;">Lịch sử tốc độ (WPM):</p>
+                <div id="historyList" class="history-list"></div>
+            </div>
+            <div class="result-actions">
+                <button class="btn" id="retryBtn">🔄 Thử lại</button>
+                <button class="btn btn-outline" id="backHomeFromResult">← Quay lại</button>
+            </div>
+        </div>
+
+        <!-- ADD -->
+        <div id="addScreen" class="screen">
+            <div class="header">
+                <h2>Thêm văn bản mới</h2>
+                <button class="btn btn-outline small" id="backHomeFromAdd">← Quay lại</button>
+            </div>
+            <form id="addTextForm">
+                <label for="addName">Tên văn bản</label>
+                <input type="text" id="addName" placeholder="Ví dụ: Đoạn văn 1" required />
+
+                <label for="addContent">Nội dung</label>
+                <textarea id="addContent" placeholder="Nhập nội dung..." required></textarea>
+
+                <label for="difficultySlider">Độ khó: <span id="difficultyLabel">Dễ</span></label>
+                <div class="slider-container">
+                    <div class="custom-slider" id="customSlider">
+                        <div class="slider-track"></div>
+                        <div class="slider-thumb" id="sliderThumb"></div>
+                    </div>
+                    <div class="slider-labels">
+                        <span>Dễ</span>
+                        <span>Trung bình</span>
+                        <span>Khó</span>
+                        <span>Cực khó</span>
+                    </div>
+                </div>
+                <input type="range" id="difficultySlider" min="0" max="3" value="0" step="1" style="display:none;" />
+
+                <label>Chế độ</label>
+                <div class="toggle-container">
+                    <span class="toggle-label active">Công khai</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="visibilityToggle" />
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label">Bí mật</span>
+                </div>
+
+                <div class="secret-code-wrapper" id="secretCodeGroup">
+                    <label for="addSecret">Nhập mã (tên file)</label>
+                    <input type="text" id="addSecret" placeholder="VD: abc123" />
+                    <p style="font-size:0.8rem; color:#d32f2f;" id="secretError" hidden>Vui lòng nhập mã cho văn bản bí mật.</p>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn">Xuất file JSON</button>
+                    <button type="button" class="btn btn-outline" id="cancelAddBtn">Huỷ</button>
+                </div>
+                <p style="margin-top:12px; font-size:0.85rem; color:var(--text-muted);">
+                    File sẽ được tải về. Bạn tự đưa vào thư mục <code>public/</code> hoặc <code>secret/</code> trên GitHub.
+                </p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Nút chuyển đổi theme -->
+    <button class="theme-toggle" id="themeToggle">🌙</button>
+
+    <!-- POPUP MẬT KHẨU -->
+    <div class="popup-overlay" id="passwordPopup">
+        <div class="popup-box">
+            <h3>🔐 Nhập mật khẩu</h3>
+            <p style="color:var(--text-muted); margin-bottom:6px;">Cần mật khẩu để thêm văn bản.</p>
+            <input type="password" id="popupPassword" placeholder="Mật khẩu" autofocus />
+            <div class="popup-actions">
+                <button class="btn btn-outline small" id="popupCancel">Huỷ</button>
+                <button class="btn small" id="popupConfirm">Xác nhận</button>
+            </div>
+            <p id="popupError" style="color:#d32f2f; font-size:0.85rem; margin-top:8px; display:none;">Sai mật khẩu!</p>
+        </div>
+    </div>
+
+    <!-- POPUP THÔNG BÁO -->
+    <div class="popup-overlay" id="messagePopup">
+        <div class="popup-box">
+            <h3 id="messageTitle">Thông báo</h3>
+            <p id="messageContent" style="color:var(--text-muted); margin-bottom:16px;"></p>
+            <div class="popup-actions" style="justify-content:center;">
+                <button class="btn small" id="messageOkBtn">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <button class="add-btn" id="addTextBtn">➕ Thêm văn bản</button>
+
+    <script src="script.js"></script>
+</body>
+</html>
