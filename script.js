@@ -18,6 +18,8 @@ const defaultData = {
 };
 
 let appData = loadData();
+let publicTexts = []; // Lưu danh sách văn bản công khai
+
 let typingState = {
     textId: null,
     content: '',
@@ -132,11 +134,27 @@ function saveData(data) {
 }
 
 // ============================================================
+//  LẤY BASE PATH (cho subfolder)
+// ============================================================
+function getBasePath() {
+    const path = window.location.pathname;
+    // Nếu đang ở root hoặc localhost, trả về rỗng
+    if (path === '/' || path === '') return '';
+    // Nếu path kết thúc bằng '/' thì bỏ nó đi
+    const base = path.replace(/\/$/, '');
+    return base;
+}
+
+const BASE = getBasePath();
+
+// ============================================================
 //  FETCH DỮ LIỆU TỪ GITHUB
 // ============================================================
 async function fetchPublicTexts() {
     try {
-        const res = await fetch('public/texts.json');
+        const url = `${BASE}/public/texts.json`;
+        console.log('Fetching public texts:', url);
+        const res = await fetch(url);
         if (!res.ok) throw new Error('Không tìm thấy texts.json');
         const list = await res.json();
         publicTexts = list;
@@ -150,7 +168,9 @@ async function fetchPublicTexts() {
 
 async function fetchTextByFilename(filename) {
     try {
-        const res = await fetch(`public/${filename}`);
+        const url = `${BASE}/public/${filename}`;
+        console.log('Fetching text:', url);
+        const res = await fetch(url);
         if (!res.ok) throw new Error('Không tìm thấy file');
         return await res.json();
     } catch (e) {
@@ -161,10 +181,13 @@ async function fetchTextByFilename(filename) {
 
 async function fetchSecretText(code) {
     try {
-        const res = await fetch(`secret/${code}.json`);
+        const url = `${BASE}/secret/${code}.json`;
+        console.log('Fetching secret:', url);
+        const res = await fetch(url);
         if (!res.ok) throw new Error('Không tìm thấy văn bản bí mật');
         return await res.json();
     } catch (e) {
+        console.warn('Lỗi tải secret:', e);
         return null;
     }
 }
@@ -476,14 +499,14 @@ function startTypingWithData(textData) {
     });
     typingState.charSpans = displayContainer.querySelectorAll('.char');
 
-    // Tạo textarea - KHÔNG vô hiệu hóa
+    // Tạo textarea – cho phép nhập ngay
     typingTextarea = document.createElement('textarea');
     typingTextarea.className = 'typing-textarea';
     typingTextarea.setAttribute('spellcheck', 'false');
     typingTextarea.setAttribute('autocomplete', 'off');
     typingTextarea.setAttribute('autocorrect', 'off');
     typingTextarea.setAttribute('autocapitalize', 'off');
-    typingTextarea.disabled = false; // Cho phép nhập ngay
+    typingTextarea.disabled = false;
     textDisplay.appendChild(typingTextarea);
 
     // Thêm caret ảo
@@ -497,7 +520,7 @@ function startTypingWithData(textData) {
         virtualCaretEl.classList.remove('hidden');
     }
 
-    // Thêm start-notice (vẫn hiển thị cho đến khi bắt đầu)
+    // Thêm start-notice
     let notice = document.getElementById('startNotice');
     if (!notice) {
         notice = document.createElement('div');
@@ -509,10 +532,10 @@ function startTypingWithData(textData) {
         notice.classList.remove('hidden');
     }
 
-    // Sự kiện input - sẽ tự động bắt đầu khi có ký tự đầu tiên
+    // Sự kiện input
     typingTextarea.addEventListener('input', handleTextareaInput);
 
-    // Click vào textDisplay để focus vào textarea
+    // Click vào textDisplay để focus
     textDisplay.addEventListener('click', () => {
         if (typingTextarea && !typingTextarea.disabled) {
             typingTextarea.focus();
@@ -528,7 +551,6 @@ function startTypingWithData(textData) {
     typingTitle.textContent = `${textData.name} (${diffName})`;
     updateStats();
     updateVirtualCaret();
-    // Focus vào textarea để người dùng gõ ngay
     typingTextarea.focus();
 }
 
@@ -554,10 +576,9 @@ function startTypingSession() {
 function handleTextareaInput() {
     if (typingState.isFinished) return;
 
-    // Nếu chưa bắt đầu, bắt đầu ngay lập tức (không mất ký tự)
-    if (!started) {
+    // Nếu chưa bắt đầu, bắt đầu ngay khi có ký tự đầu tiên
+    if (!started && typingTextarea.value.length > 0) {
         startTypingSession();
-        // Vẫn tiếp tục xử lý ký tự vừa nhập
     }
 
     if (!typingState.startTime) {
