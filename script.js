@@ -551,33 +551,47 @@ function startTypingWithData(textData) {
     // --- SỰ KIỆN ---
     typingTextarea.addEventListener('input', handleTextareaInput);
 
-    // Chặn các phím di chuyển con trỏ thật (mũi tên, Home/End...) vì mô hình của app
-    // luôn giả định con trỏ nằm ở cuối chuỗi đã gõ. Nếu để con trỏ thật lệch khỏi vị trí
-    // này thì caret ảo và caret thật (dù color:transparent) sẽ desync -> gây "lộ caret thật".
-    // Muốn quay lại sửa ký tự cũ, dùng click vào ký tự đó (xử lý bên dưới).
+    // Chặn phím mũi tên/Home/End để con trỏ thật không tự do di chuyển ngoài tầm kiểm soát
+    // (tránh desync giữa caret ảo và caret thật). Việc "quay lại sửa" thực hiện bằng click
+    // vào đúng ký tự cần sửa (xử lý bên dưới) — gõ đè ký tự đúng rồi tự động tiếp tục
+    // gõ về phía sau, không mất phần đã gõ tiếp theo.
     typingTextarea.addEventListener('keydown', (e) => {
-        const blocked = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'];
-        if (blocked.includes(e.key)) e.preventDefault();
+        const blockedNav = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'];
+        if (blockedNav.includes(e.key)) { e.preventDefault(); return; }
+        if (e.key === 'Backspace') {
+            const len = typingTextarea.value.length;
+            const pos = typingTextarea.selectionStart;
+            if (pos < len) {
+                // Đang ở giữa (chế độ sửa tại chỗ) -> không cho xoá lùi vì sẽ làm lệch
+                // vị trí ký tự với văn bản mẫu. Cứ gõ đè để sửa, gõ hết là tự về cuối.
+                e.preventDefault();
+            }
+            // else: đang ở cuối (gõ bình thường) -> để trình duyệt tự xoá ký tự cuối như cũ
+        }
     });
 
-    // Click để focus vào vùng gõ (click ra ngoài chữ, hoặc click vào phần chưa gõ tới)
+    // Click để focus vào vùng gõ (click ra ngoài chữ)
     textDisplay.addEventListener('click', () => {
         if (typingTextarea && !typingTextarea.disabled) {
             typingTextarea.focus();
         }
     });
 
-    // Click trực tiếp vào một ký tự ĐÃ GÕ (đúng hoặc sai) để quay lại sửa từ đó.
-    // displayContainer có pointer-events:none nên mọi click đều rơi vào typingTextarea ở trên;
-    // ta dò toạ độ click khớp với span ký tự tương ứng.
+    // Click trực tiếp vào một ký tự ĐÃ GÕ (đúng hoặc sai) để đưa con trỏ về đó và SỬA TẠI CHỖ.
+    // Không xoá phần đã gõ phía sau — gõ 1 ký tự sẽ "đè" lên đúng vị trí đó, con trỏ tự
+    // nhảy sang ô kế tiếp để có thể sửa liên tiếp nhiều ký tự, và khi tới cuối thì tự động
+    // quay lại chế độ gõ tiếp bình thường.
+    // (displayContainer có pointer-events:none nên mọi click đều rơi vào typingTextarea ở trên;
+    // ta dò toạ độ click khớp với span ký tự tương ứng.)
     typingTextarea.addEventListener('mousedown', (e) => {
         if (typingState.isFinished) return;
+        const len = typingTextarea.value.length;
         const idx = findCharIndexAtPoint(e.clientX, e.clientY);
-        if (idx === null || idx >= typingState.currentIndex) return; // chỉ cho lùi lại, không cho nhảy tới
+        if (idx === null || idx >= len) return; // chỉ cho sửa phần đã gõ, không cho nhảy tới phần chưa gõ
         e.preventDefault();
-        typingTextarea.value = typingTextarea.value.slice(0, idx);
-        syncFromValue();
         typingTextarea.focus();
+        typingTextarea.setSelectionRange(idx, Math.min(idx + 1, len));
+        updateVirtualCaret();
     });
 
     typingTextarea.addEventListener('paste', (e) => e.preventDefault());
@@ -620,9 +634,25 @@ function handleTextareaInput() {
     }
 
     syncFromValue();
+    syncSelectionMode();
 
     if (typingState.currentIndex === typingState.chars.length) {
         finishTyping();
+    }
+}
+
+// Giữ nguyên tắc: nếu con trỏ đang ở giữa văn bản đã gõ (chế độ sửa tại chỗ), luôn CHỌN SẴN
+// đúng 1 ký tự kế tiếp — nhờ vậy khi người dùng gõ phím tiếp theo, trình duyệt sẽ tự "gõ đè"
+// (ghi đè lên vùng đang chọn) thay vì chèn thêm ký tự làm lệch vị trí với văn bản mẫu.
+// Khi con trỏ đã tới cuối văn bản đã gõ thì quay lại trạng thái gõ nối bình thường.
+function syncSelectionMode() {
+    if (!typingTextarea) return;
+    const len = typingTextarea.value.length;
+    const pos = typingTextarea.selectionStart;
+    if (pos < len) {
+        typingTextarea.setSelectionRange(pos, pos + 1);
+    } else {
+        typingTextarea.setSelectionRange(len, len);
     }
 }
 
@@ -700,8 +730,10 @@ function findCharIndexAtPoint(x, y) {
 
 function updateVirtualCaret() {
     const caretEl = document.getElementById('virtualCaret');
-    if (!caretEl || !typingWrapper) return;
-    const idx = typingState.currentIndex;
+    if (!caretEl || !typingWrapper || !typingTextarea) return;
+    // Dùng đúng vị trí con trỏ thật (selectionStart) để caret ảo LUÔN trùng khớp,
+    // dù đang gõ nối bình thường ở cuối hay đang sửa tại chỗ ở giữa văn bản.
+    const idx = typingTextarea.selectionStart;
     const spans = typingState.charSpans;
     if (!spans || spans.length === 0 || idx >= spans.length) {
         caretEl.classList.add('hidden');
@@ -723,6 +755,15 @@ function updateVirtualCaret() {
     caretEl.style.left = left + 'px';
     caretEl.style.top = top + 'px';
     caretEl.style.height = targetRect.height + 'px';
+
+    // Khoanh nhẹ ô ký tự đang sửa (khi con trỏ ở giữa văn bản đã gõ) để dễ nhận biết.
+    const prevEditing = displayContainer.querySelector('.char.editing');
+    if (prevEditing && prevEditing !== target) prevEditing.classList.remove('editing');
+    if (idx < typingTextarea.value.length) {
+        target.classList.add('editing');
+    } else if (prevEditing) {
+        prevEditing.classList.remove('editing');
+    }
 
     // Tự cuộn wrapper để caret luôn nằm trong vùng nhìn thấy.
     const caretTopInView = targetRect.top - wrapperRect.top;
