@@ -587,3 +587,46 @@ body {
     .start-message { font-size: 1rem; padding: 12px 24px; }
     .theme-toggle { top: 10px; right: 10px; width: 36px; height: 36px; font-size: 1.1rem; }
 }
+.display-container {
+    padding: 28px 32px;
+    box-sizing: border-box;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 1.5rem;
+    line-height: 2.4;
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow: auto;
+    pointer-events: none;
+}
+
+.typing-textarea {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    padding: 28px 32px;
+    box-sizing: border-box;
+    border: none;
+    outline: none;
+    resize: none;
+    background: transparent;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 1.5rem;
+    line-height: 2.4;
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow: auto;
+    color: transparent;
+    caret-color: var(--caret-color, #1e293b);
+    z-index: 10;
+}
+
+/* Ẩn scrollbar của textarea nhưng vẫn cho scroll */
+.typing-textarea::-webkit-scrollbar {
+    width: 0;
+    background: transparent;
+}
+.typing-textarea {
+    scrollbar-width: none;
+}

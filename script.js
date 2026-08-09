@@ -137,9 +137,7 @@ function saveData(data) {
 // ============================================================
 function getBasePath() {
     const path = window.location.pathname;
-    // Nếu đang ở root (hoặc localhost), trả về rỗng
     if (path === '/' || path === '') return '';
-    // Nếu path kết thúc bằng '/', bỏ nó đi
     const base = path.replace(/\/$/, '');
     return base;
 }
@@ -151,12 +149,12 @@ const BASE = getBasePath();
 async function fetchPublicTexts() {
     try {
         const url = `${BASE}/public/texts.json`;
-        console.log('📥 Fetching texts.json từ:', url);
+        console.log('📥 Fetching public texts:', url);
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         const list = await res.json();
         publicTexts = list;
-        console.log('✅ Đã tải danh sách văn bản:', publicTexts);
+        console.log('✅ Đã tải danh sách:', publicTexts);
         renderPublicTexts();
     } catch (e) {
         console.warn('❌ Không thể tải danh sách văn bản:', e);
@@ -168,9 +166,9 @@ async function fetchPublicTexts() {
 async function fetchTextByFilename(filename) {
     try {
         const url = `${BASE}/public/${filename}`;
-        console.log('📥 Fetching văn bản từ:', url);
+        console.log('📥 Fetching text:', url);
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        if (!res.ok) throw new Error('Không tìm thấy file');
         const data = await res.json();
         console.log('✅ Đã tải văn bản:', data.name);
         return data;
@@ -183,11 +181,11 @@ async function fetchTextByFilename(filename) {
 async function fetchSecretText(code) {
     try {
         const url = `${BASE}/secret/${code}.json`;
-        console.log('📥 Fetching secret từ:', url);
+        console.log('📥 Fetching secret:', url);
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        if (!res.ok) throw new Error('Không tìm thấy văn bản bí mật');
         const data = await res.json();
-        console.log('✅ Đã tải văn bản bí mật:', data.name);
+        console.log('✅ Đã tải secret:', data.name);
         return data;
     } catch (e) {
         console.warn('❌ Lỗi tải secret:', e);
@@ -448,7 +446,7 @@ async function openSecretText() {
 }
 
 // ============================================================
-//  KHỞI TẠO GÕ VỚI DỮ LIỆU VĂN BẢN
+//  KHỞI TẠO GÕ VỚI DỮ LIỆU VĂN BẢN (ĐỒNG BỘ)
 // ============================================================
 function startTypingWithData(textData) {
     const content = textData.content;
@@ -470,6 +468,7 @@ function startTypingWithData(textData) {
     }
     started = false;
 
+    // Xóa các thành phần cũ
     if (typingTextarea) {
         typingTextarea.remove();
         typingTextarea = null;
@@ -479,8 +478,7 @@ function startTypingWithData(textData) {
         displayContainer = null;
     }
 
-    displayContainer = document.createElement('div');
-    displayContainer.className = 'display-container';
+    // Reset textDisplay
     textDisplay.innerHTML = '';
     textDisplay.style.position = 'relative';
     textDisplay.style.padding = '0';
@@ -488,8 +486,31 @@ function startTypingWithData(textData) {
     textDisplay.style.borderRadius = '16px';
     textDisplay.style.minHeight = '180px';
     textDisplay.style.overflow = 'hidden';
+    textDisplay.style.height = 'auto'; // cho phép co giãn
+
+    // --- TẠO DISPLAY CONTAINER (lớp hiển thị) ---
+    displayContainer = document.createElement('div');
+    displayContainer.className = 'display-container';
+    displayContainer.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        padding: 28px 32px;
+        box-sizing: border-box;
+        font-family: 'Roboto Mono', monospace;
+        font-size: 1.5rem;
+        line-height: 2.4;
+        white-space: pre-wrap;
+        word-break: break-all;
+        overflow: auto;
+        pointer-events: none;
+        z-index: 5;
+    `;
     textDisplay.appendChild(displayContainer);
 
+    // Thêm các span cho từng ký tự
     typingState.chars.forEach((ch, idx) => {
         const span = document.createElement('span');
         span.className = 'char dim';
@@ -500,8 +521,31 @@ function startTypingWithData(textData) {
     });
     typingState.charSpans = displayContainer.querySelectorAll('.char');
 
+    // --- TẠO TEXTAREA (lớp nhập liệu trong suốt) ---
     typingTextarea = document.createElement('textarea');
     typingTextarea.className = 'typing-textarea';
+    typingTextarea.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        padding: 28px 32px;
+        box-sizing: border-box;
+        border: none;
+        outline: none;
+        resize: none;
+        background: transparent;
+        font-family: 'Roboto Mono', monospace;
+        font-size: 1.5rem;
+        line-height: 2.4;
+        white-space: pre-wrap;
+        word-break: break-all;
+        overflow: auto;
+        color: transparent;
+        caret-color: var(--caret-color, #1e293b);
+        z-index: 10;
+    `;
     typingTextarea.setAttribute('spellcheck', 'false');
     typingTextarea.setAttribute('autocomplete', 'off');
     typingTextarea.setAttribute('autocorrect', 'off');
@@ -509,6 +553,15 @@ function startTypingWithData(textData) {
     typingTextarea.disabled = false;
     textDisplay.appendChild(typingTextarea);
 
+    // Ẩn scrollbar của textarea
+    const style = document.createElement('style');
+    style.textContent = `
+        .typing-textarea::-webkit-scrollbar { width: 0; background: transparent; }
+        .typing-textarea { scrollbar-width: none; }
+    `;
+    document.head.appendChild(style);
+
+    // --- THÊM CARET ẢO ---
     let virtualCaretEl = document.getElementById('virtualCaret');
     if (!virtualCaretEl) {
         virtualCaretEl = document.createElement('div');
@@ -519,6 +572,7 @@ function startTypingWithData(textData) {
         virtualCaretEl.classList.remove('hidden');
     }
 
+    // --- THÊM START NOTICE ---
     let notice = document.getElementById('startNotice');
     if (!notice) {
         notice = document.createElement('div');
@@ -530,6 +584,7 @@ function startTypingWithData(textData) {
         notice.classList.remove('hidden');
     }
 
+    // --- SỰ KIỆN ---
     typingTextarea.addEventListener('input', handleTextareaInput);
     textDisplay.addEventListener('click', () => {
         if (typingTextarea && !typingTextarea.disabled) {
