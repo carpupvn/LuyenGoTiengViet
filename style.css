@@ -254,13 +254,35 @@ body {
     font-weight: 700;
 }
 
-.display-container {
-    padding: 60px 32px 28px 32px;
-    white-space: pre-wrap;
-    word-break: break-all;
-    line-height: 2.4;
-    font-size: 1.5rem;
+.typing-wrapper {
+    position: relative;
+    display: grid;
+    width: 100%;
+    max-height: 340px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+/* Lớp hiển thị & lớp textarea PHẢI dùng chung 1 ô grid để không bao giờ lệch kích thước/word-wrap với nhau */
+.display-container,
+.typing-textarea {
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 28px 32px;
+    margin: 0;
+    border: none;
     font-family: 'Roboto Mono', monospace;
+    font-size: 1.5rem;
+    line-height: 2.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    overflow: visible;
+}
+.display-container {
+    pointer-events: none;
+    z-index: 5;
 }
 .char.dim { color: var(--text-muted); opacity: 0.4; }
 .char.correct { color: var(--text); }
@@ -275,24 +297,11 @@ body {
 }
 
 .typing-textarea {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    padding: 28px 32px;
-    border: none;
-    outline: none;
+    position: relative;
     resize: none;
     background: transparent;
-    font-family: 'Roboto Mono', monospace;
-    font-size: 1.5rem;
-    line-height: 2.4;
     color: transparent;
-    caret-color: transparent;
-    white-space: pre-wrap;
-    word-break: break-all;
-    overflow: auto;
+    caret-color: transparent !important;
     z-index: 10;
 }
 .typing-textarea:disabled {
@@ -587,42 +596,7 @@ body {
     .start-message { font-size: 1rem; padding: 12px 24px; }
     .theme-toggle { top: 10px; right: 10px; width: 36px; height: 36px; font-size: 1.1rem; }
 }
-.display-container {
-    padding: 28px 32px;
-    box-sizing: border-box;
-    font-family: 'Roboto Mono', monospace;
-    font-size: 1.5rem;
-    line-height: 2.4;
-    white-space: pre-wrap;
-    word-break: break-all;
-    overflow: auto;
-    pointer-events: none;
-}
-
-.typing-textarea {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    padding: 28px 32px;
-    box-sizing: border-box;
-    border: none;
-    outline: none;
-    resize: none;
-    background: transparent;
-    font-family: 'Roboto Mono', monospace;
-    font-size: 1.5rem;
-    line-height: 2.4;
-    white-space: pre-wrap;
-    word-break: break-all;
-    overflow: auto;
-    color: transparent;
-    caret-color: var(--caret-color, #1e293b);
-    z-index: 10;
-}
-
-/* Ẩn scrollbar của textarea nhưng vẫn cho scroll */
+/* Ẩn scrollbar riêng của textarea — việc cuộn giờ do .typing-wrapper đảm nhiệm duy nhất */
 .typing-textarea::-webkit-scrollbar {
     width: 0;
     background: transparent;

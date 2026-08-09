@@ -106,6 +106,7 @@ const themeToggle = $('themeToggle');
 
 let typingTextarea = null;
 let displayContainer = null;
+let typingWrapper = null;
 
 // ============================================================
 //  HÀM TIỆN ÍCH
@@ -476,52 +477,24 @@ function startTypingWithData(textData) {
         displayContainer.remove();
         displayContainer = null;
     }
+    typingWrapper = null;
 
     // Reset textDisplay
     textDisplay.innerHTML = '';
-    textDisplay.style.position = 'relative';
-    textDisplay.style.padding = '0';
-    textDisplay.style.background = 'var(--card-bg)';
-    textDisplay.style.borderRadius = '16px';
-    textDisplay.style.minHeight = '180px';
-    textDisplay.style.overflow = 'hidden';
-    textDisplay.style.height = 'auto';
 
     // --- Tạo container chính để chứa cả hai lớp ---
+    // QUAN TRỌNG: wrapper dùng display:grid (định nghĩa trong style.css, class .typing-wrapper)
+    // để displayContainer và typingTextarea cùng nằm trong 1 ô grid, LUÔN có cùng
+    // kích thước/word-wrap tuyệt đối với nhau. Không set inline style ở đây nữa để
+    // tránh việc JS đè lệch với CSS như trước (nguyên nhân gây lệch ký tự khi xuống dòng).
     const wrapper = document.createElement('div');
-    wrapper.style.cssText = `
-        position: relative;
-        width: 100%;
-        height: 100%;
-        min-height: 180px;
-        overflow: auto;
-    `;
+    wrapper.className = 'typing-wrapper';
     textDisplay.appendChild(wrapper);
+    typingWrapper = wrapper;
 
     // --- DISPLAY CONTAINER (lớp hiển thị) ---
     displayContainer = document.createElement('div');
     displayContainer.className = 'display-container';
-    Object.assign(displayContainer.style, {
-        position: 'absolute',
-        top: '0',
-        left: '0',
-        width: '100%',
-        height: '100%',
-        padding: '28px 32px',
-        boxSizing: 'border-box',
-        fontFamily: "'Roboto Mono', monospace",
-        fontSize: '1.5rem',
-        lineHeight: '2.4',
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-word',
-        overflowWrap: 'break-word',
-        overflow: 'auto',
-        pointerEvents: 'none',
-        zIndex: '5',
-        margin: '0',
-        border: 'none',
-        background: 'transparent'
-    });
     wrapper.appendChild(displayContainer);
 
     // Thêm các span
@@ -535,51 +508,15 @@ function startTypingWithData(textData) {
     });
     typingState.charSpans = displayContainer.querySelectorAll('.char');
 
-    // --- TEXTAREA (lớp nhập liệu trong suốt) ---
+    // --- TEXTAREA (lớp nhập liệu trong suốt, chồng khít lên lớp hiển thị nhờ CSS grid) ---
     typingTextarea = document.createElement('textarea');
     typingTextarea.className = 'typing-textarea';
-    Object.assign(typingTextarea.style, {
-        position: 'absolute',
-        top: '0',
-        left: '0',
-        width: '100%',
-        height: '100%',
-        padding: '28px 32px',
-        boxSizing: 'border-box',
-        border: 'none',
-        outline: 'none',
-        resize: 'none',
-        background: 'transparent',
-        fontFamily: "'Roboto Mono', monospace",
-        fontSize: '1.5rem',
-        lineHeight: '2.4',
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-word',
-        overflowWrap: 'break-word',
-        overflow: 'auto',
-        color: 'transparent',
-        caretColor: 'transparent',
-        zIndex: '10',
-        margin: '0'
-    });
     typingTextarea.setAttribute('spellcheck', 'false');
     typingTextarea.setAttribute('autocomplete', 'off');
     typingTextarea.setAttribute('autocorrect', 'off');
     typingTextarea.setAttribute('autocapitalize', 'off');
     typingTextarea.disabled = false;
     wrapper.appendChild(typingTextarea);
-
-    // Ẩn scrollbar của textarea
-    const styleId = 'hide-textarea-scrollbar';
-    if (!document.getElementById(styleId)) {
-        const style = document.createElement('style');
-        style.id = styleId;
-        style.textContent = `
-            .typing-textarea::-webkit-scrollbar { width: 0; background: transparent; }
-            .typing-textarea { scrollbar-width: none; }
-        `;
-        document.head.appendChild(style);
-    }
 
     // --- CARET ẢO ---
     let caretEl = document.getElementById('virtualCaret');
@@ -613,10 +550,34 @@ function startTypingWithData(textData) {
 
     // --- SỰ KIỆN ---
     typingTextarea.addEventListener('input', handleTextareaInput);
+
+    // Chặn các phím di chuyển con trỏ thật (mũi tên, Home/End...) vì mô hình của app
+    // luôn giả định con trỏ nằm ở cuối chuỗi đã gõ. Nếu để con trỏ thật lệch khỏi vị trí
+    // này thì caret ảo và caret thật (dù color:transparent) sẽ desync -> gây "lộ caret thật".
+    // Muốn quay lại sửa ký tự cũ, dùng click vào ký tự đó (xử lý bên dưới).
+    typingTextarea.addEventListener('keydown', (e) => {
+        const blocked = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'];
+        if (blocked.includes(e.key)) e.preventDefault();
+    });
+
+    // Click để focus vào vùng gõ (click ra ngoài chữ, hoặc click vào phần chưa gõ tới)
     textDisplay.addEventListener('click', () => {
         if (typingTextarea && !typingTextarea.disabled) {
             typingTextarea.focus();
         }
+    });
+
+    // Click trực tiếp vào một ký tự ĐÃ GÕ (đúng hoặc sai) để quay lại sửa từ đó.
+    // displayContainer có pointer-events:none nên mọi click đều rơi vào typingTextarea ở trên;
+    // ta dò toạ độ click khớp với span ký tự tương ứng.
+    typingTextarea.addEventListener('mousedown', (e) => {
+        if (typingState.isFinished) return;
+        const idx = findCharIndexAtPoint(e.clientX, e.clientY);
+        if (idx === null || idx >= typingState.currentIndex) return; // chỉ cho lùi lại, không cho nhảy tới
+        e.preventDefault();
+        typingTextarea.value = typingTextarea.value.slice(0, idx);
+        syncFromValue();
+        typingTextarea.focus();
     });
 
     typingTextarea.addEventListener('paste', (e) => e.preventDefault());
@@ -658,6 +619,17 @@ function handleTextareaInput() {
         typingState.startTime = Date.now();
     }
 
+    syncFromValue();
+
+    if (typingState.currentIndex === typingState.chars.length) {
+        finishTyping();
+    }
+}
+
+// Đồng bộ trạng thái hiển thị (span đúng/sai/mờ + stats + caret ảo) dựa trên
+// nội dung hiện tại của typingTextarea.value. Dùng chung cho cả khi gõ bình thường
+// (input event) và khi người dùng click vào ký tự cũ để quay lại sửa.
+function syncFromValue() {
     const inputText = typingTextarea.value;
     const typedLen = inputText.length;
     const chars = typingState.chars;
@@ -694,25 +666,41 @@ function handleTextareaInput() {
         span.className = 'char dim';
     }
 
-    if (typingState.charTimestamps.length < typedLen) {
+    if (typingState.startTime && typingState.charTimestamps.length < typedLen) {
         const now = Date.now() - typingState.startTime;
         while (typingState.charTimestamps.length < typedLen) {
             typingState.charTimestamps.push(now);
         }
     }
+    // Nếu người dùng click lùi lại (xoá bớt timestamps thừa) thì cắt luôn mảng timestamps
+    // cho khớp độ dài đã gõ, tránh sai lệch số liệu tốc độ.
+    if (typingState.charTimestamps.length > typedLen) {
+        typingState.charTimestamps.length = typedLen;
+    }
 
     updateStats();
-    updateWpmHistory(Date.now() - typingState.startTime);
-    updateVirtualCaret();
-
-    if (typingState.currentIndex === chars.length) {
-        finishTyping();
+    if (typingState.startTime) {
+        updateWpmHistory(Date.now() - typingState.startTime);
     }
+    updateVirtualCaret();
+}
+
+// Tìm span ký tự tại toạ độ (x, y) trên màn hình — dùng cho tính năng
+// click vào ký tự cũ để quay lại sửa (vì displayContainer có pointer-events:none
+// nên không thể gắn onclick trực tiếp lên từng span).
+function findCharIndexAtPoint(x, y) {
+    const spans = typingState.charSpans;
+    if (!spans) return null;
+    for (let i = 0; i < spans.length; i++) {
+        const r = spans[i].getBoundingClientRect();
+        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return i;
+    }
+    return null;
 }
 
 function updateVirtualCaret() {
     const caretEl = document.getElementById('virtualCaret');
-    if (!caretEl) return;
+    if (!caretEl || !typingWrapper) return;
     const idx = typingState.currentIndex;
     const spans = typingState.charSpans;
     if (!spans || spans.length === 0 || idx >= spans.length) {
@@ -722,11 +710,28 @@ function updateVirtualCaret() {
     caretEl.classList.remove('hidden');
     const target = spans[idx];
     if (!target) return;
-    const containerRect = textDisplay.getBoundingClientRect();
+
+    // Tính vị trí caret theo hệ toạ độ "nội dung" bên trong typingWrapper (kể cả
+    // phần đang bị cuộn khuất), bằng cách cộng thêm scrollTop/scrollLeft hiện tại.
+    // Trước đây chỉ lấy hiệu số getBoundingClientRect nên khi wrapper bị cuộn,
+    // caret ảo tính sai vị trí -> để lộ caret thật ở chỗ khác.
+    const wrapperRect = typingWrapper.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
-    caretEl.style.left = (targetRect.left - containerRect.left) + 'px';
-    caretEl.style.top = (targetRect.top - containerRect.top) + 'px';
+    const left = (targetRect.left - wrapperRect.left) + typingWrapper.scrollLeft;
+    const top = (targetRect.top - wrapperRect.top) + typingWrapper.scrollTop;
+
+    caretEl.style.left = left + 'px';
+    caretEl.style.top = top + 'px';
     caretEl.style.height = targetRect.height + 'px';
+
+    // Tự cuộn wrapper để caret luôn nằm trong vùng nhìn thấy.
+    const caretTopInView = targetRect.top - wrapperRect.top;
+    const caretBottomInView = targetRect.bottom - wrapperRect.top;
+    if (caretTopInView < 0) {
+        typingWrapper.scrollTop += caretTopInView;
+    } else if (caretBottomInView > wrapperRect.height) {
+        typingWrapper.scrollTop += (caretBottomInView - wrapperRect.height);
+    }
 }
 
 function updateTimer() {
