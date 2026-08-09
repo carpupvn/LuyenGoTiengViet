@@ -468,7 +468,6 @@ function startTypingWithData(textData) {
     }
     started = false;
 
-    // Xóa các thành phần cũ
     if (typingTextarea) {
         typingTextarea.remove();
         typingTextarea = null;
@@ -478,7 +477,6 @@ function startTypingWithData(textData) {
         displayContainer = null;
     }
 
-    // Reset textDisplay
     textDisplay.innerHTML = '';
     textDisplay.style.position = 'relative';
     textDisplay.style.padding = '0';
@@ -486,31 +484,31 @@ function startTypingWithData(textData) {
     textDisplay.style.borderRadius = '16px';
     textDisplay.style.minHeight = '180px';
     textDisplay.style.overflow = 'hidden';
-    textDisplay.style.height = 'auto'; // cho phép co giãn
+    textDisplay.style.height = 'auto';
 
-    // --- TẠO DISPLAY CONTAINER (lớp hiển thị) ---
+    // --- DISPLAY CONTAINER ---
     displayContainer = document.createElement('div');
     displayContainer.className = 'display-container';
-    displayContainer.style.cssText = `
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        padding: 28px 32px;
-        box-sizing: border-box;
-        font-family: 'Roboto Mono', monospace;
-        font-size: 1.5rem;
-        line-height: 2.4;
-        white-space: pre-wrap;
-        word-break: break-all;
-        overflow: auto;
-        pointer-events: none;
-        z-index: 5;
-    `;
+    Object.assign(displayContainer.style, {
+        position: 'absolute',
+        top: '0',
+        left: '0',
+        width: '100%',
+        height: '100%',
+        padding: '28px 32px',
+        boxSizing: 'border-box',
+        fontFamily: "'Roboto Mono', monospace",
+        fontSize: '1.5rem',
+        lineHeight: '2.4',
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+        overflowWrap: 'break-word',
+        overflow: 'auto',
+        pointerEvents: 'none',
+        zIndex: '5'
+    });
     textDisplay.appendChild(displayContainer);
 
-    // Thêm các span cho từng ký tự
     typingState.chars.forEach((ch, idx) => {
         const span = document.createElement('span');
         span.className = 'char dim';
@@ -521,31 +519,32 @@ function startTypingWithData(textData) {
     });
     typingState.charSpans = displayContainer.querySelectorAll('.char');
 
-    // --- TẠO TEXTAREA (lớp nhập liệu trong suốt) ---
+    // --- TEXTAREA ---
     typingTextarea = document.createElement('textarea');
     typingTextarea.className = 'typing-textarea';
-    typingTextarea.style.cssText = `
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        padding: 28px 32px;
-        box-sizing: border-box;
-        border: none;
-        outline: none;
-        resize: none;
-        background: transparent;
-        font-family: 'Roboto Mono', monospace;
-        font-size: 1.5rem;
-        line-height: 2.4;
-        white-space: pre-wrap;
-        word-break: break-all;
-        overflow: auto;
-        color: transparent;
-        caret-color: var(--caret-color, #1e293b);
-        z-index: 10;
-    `;
+    Object.assign(typingTextarea.style, {
+        position: 'absolute',
+        top: '0',
+        left: '0',
+        width: '100%',
+        height: '100%',
+        padding: '28px 32px',
+        boxSizing: 'border-box',
+        border: 'none',
+        outline: 'none',
+        resize: 'none',
+        background: 'transparent',
+        fontFamily: "'Roboto Mono', monospace",
+        fontSize: '1.5rem',
+        lineHeight: '2.4',
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+        overflowWrap: 'break-word',
+        overflow: 'auto',
+        color: 'transparent',
+        caretColor: 'transparent !important',
+        zIndex: '10'
+    });
     typingTextarea.setAttribute('spellcheck', 'false');
     typingTextarea.setAttribute('autocomplete', 'off');
     typingTextarea.setAttribute('autocorrect', 'off');
@@ -553,26 +552,30 @@ function startTypingWithData(textData) {
     typingTextarea.disabled = false;
     textDisplay.appendChild(typingTextarea);
 
-    // Ẩn scrollbar của textarea
-    const style = document.createElement('style');
-    style.textContent = `
-        .typing-textarea::-webkit-scrollbar { width: 0; background: transparent; }
-        .typing-textarea { scrollbar-width: none; }
-    `;
-    document.head.appendChild(style);
-
-    // --- THÊM CARET ẢO ---
-    let virtualCaretEl = document.getElementById('virtualCaret');
-    if (!virtualCaretEl) {
-        virtualCaretEl = document.createElement('div');
-        virtualCaretEl.id = 'virtualCaret';
-        virtualCaretEl.className = 'virtual-caret';
-        textDisplay.appendChild(virtualCaretEl);
-    } else {
-        virtualCaretEl.classList.remove('hidden');
+    // Ẩn scrollbar textarea
+    const styleId = 'hide-textarea-scrollbar';
+    if (!document.getElementById(styleId)) {
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+            .typing-textarea::-webkit-scrollbar { width: 0; background: transparent; }
+            .typing-textarea { scrollbar-width: none; }
+        `;
+        document.head.appendChild(style);
     }
 
-    // --- THÊM START NOTICE ---
+    // --- CARET ẢO ---
+    let caretEl = document.getElementById('virtualCaret');
+    if (!caretEl) {
+        caretEl = document.createElement('div');
+        caretEl.id = 'virtualCaret';
+        caretEl.className = 'virtual-caret';
+        textDisplay.appendChild(caretEl);
+    } else {
+        caretEl.classList.remove('hidden');
+    }
+
+    // --- START NOTICE ---
     let notice = document.getElementById('startNotice');
     if (!notice) {
         notice = document.createElement('div');
@@ -584,7 +587,6 @@ function startTypingWithData(textData) {
         notice.classList.remove('hidden');
     }
 
-    // --- SỰ KIỆN ---
     typingTextarea.addEventListener('input', handleTextareaInput);
     textDisplay.addEventListener('click', () => {
         if (typingTextarea && !typingTextarea.disabled) {
