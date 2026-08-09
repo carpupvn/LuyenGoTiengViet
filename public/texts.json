@@ -1,14 +1,16 @@
 [
     {
-        "id": "text1",
+        "id": "van_ban_mau",
         "name": "Văn bản mẫu",
         "difficulty": 0,
-        "filename": "vanbanmau.json"
+        "wordCount": 12,
+        "filename": "van-ban-mau.json"
     },
     {
-        "id": "lauracafe",
+        "id": "laura_ca_phe",
         "name": "Laura cà phê",
         "difficulty": 1,
-        "filename": "lauracafe.json"
+        "wordCount": 85,
+        "filename": "laura-ca-phe.json"
     }
 ]

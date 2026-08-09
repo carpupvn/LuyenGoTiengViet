@@ -4,7 +4,6 @@
 const PASSWORD = 'bomaylaadmin';
 const STORAGE_KEY = 'typingAppData';
 
-// Dữ liệu mặc định chỉ để fallback khi không fetch được
 const defaultData = {
     texts: [
         {
@@ -18,7 +17,7 @@ const defaultData = {
     history: []
 };
 
-let appData = loadData(); // vẫn dùng localStorage cho lịch sử
+let appData = loadData();
 let typingState = {
     textId: null,
     content: '',
@@ -37,7 +36,6 @@ let typingState = {
 };
 
 let started = false;
-let publicTexts = []; // mảng các văn bản công khai từ GitHub
 
 // ============================================================
 //  DOM REFS
@@ -347,12 +345,11 @@ function showHome() {
 
 function showSelect() {
     showScreen('selectScreen');
-    fetchPublicTexts(); // tải lại danh sách mỗi khi vào
+    fetchPublicTexts();
 }
 
 function showTyping(textId) {
     showScreen('typingScreen');
-    // Tìm văn bản trong publicTexts (đã có sẵn từ fetch)
     const meta = publicTexts.find(t => t.id === textId);
     if (meta) {
         fetchTextByFilename(meta.filename).then(data => {
@@ -392,7 +389,7 @@ function renderPublicTexts() {
         const diff = t.difficulty !== undefined ? t.difficulty : 0;
         const div = document.createElement('div');
         div.className = `text-item difficulty-${diff}`;
-        const words = t.wordCount || 0; // có thể thêm wordCount vào meta
+        const words = t.wordCount || 0;
         const diffName = getDifficultyName(diff);
         div.innerHTML = `
             <div class="name">${t.name}</div>
@@ -417,7 +414,6 @@ async function openSecretText() {
     }
     const data = await fetchSecretText(code);
     if (data) {
-        // Lưu vào publicTexts tạm thời để hiển thị? Không cần, chỉ dùng để gõ.
         startTypingWithData(data);
     } else {
         showMessage('Không tìm thấy', 'Không tìm thấy văn bản với mã này.');
@@ -429,7 +425,6 @@ async function openSecretText() {
 //  KHỞI TẠO GÕ VỚI DỮ LIỆU VĂN BẢN
 // ============================================================
 function startTypingWithData(textData) {
-    // textData có cấu trúc: { id, name, content, difficulty }
     const content = textData.content;
     typingState.textId = textData.id || 'unknown';
     typingState.content = content;
@@ -481,14 +476,14 @@ function startTypingWithData(textData) {
     });
     typingState.charSpans = displayContainer.querySelectorAll('.char');
 
-    // Tạo textarea
+    // Tạo textarea - KHÔNG vô hiệu hóa
     typingTextarea = document.createElement('textarea');
     typingTextarea.className = 'typing-textarea';
     typingTextarea.setAttribute('spellcheck', 'false');
     typingTextarea.setAttribute('autocomplete', 'off');
     typingTextarea.setAttribute('autocorrect', 'off');
     typingTextarea.setAttribute('autocapitalize', 'off');
-    typingTextarea.disabled = true;
+    typingTextarea.disabled = false; // Cho phép nhập ngay
     textDisplay.appendChild(typingTextarea);
 
     // Thêm caret ảo
@@ -502,7 +497,7 @@ function startTypingWithData(textData) {
         virtualCaretEl.classList.remove('hidden');
     }
 
-    // Thêm start-notice
+    // Thêm start-notice (vẫn hiển thị cho đến khi bắt đầu)
     let notice = document.getElementById('startNotice');
     if (!notice) {
         notice = document.createElement('div');
@@ -514,15 +509,17 @@ function startTypingWithData(textData) {
         notice.classList.remove('hidden');
     }
 
+    // Sự kiện input - sẽ tự động bắt đầu khi có ký tự đầu tiên
     typingTextarea.addEventListener('input', handleTextareaInput);
+
+    // Click vào textDisplay để focus vào textarea
     textDisplay.addEventListener('click', () => {
-        if (started && typingTextarea && !typingTextarea.disabled) {
+        if (typingTextarea && !typingTextarea.disabled) {
             typingTextarea.focus();
         }
     });
 
-    document.addEventListener('keydown', handleFirstKey);
-
+    // Chặn paste/copy/cut
     typingTextarea.addEventListener('paste', (e) => e.preventDefault());
     typingTextarea.addEventListener('copy', (e) => e.preventDefault());
     typingTextarea.addEventListener('cut', (e) => e.preventDefault());
@@ -531,43 +528,38 @@ function startTypingWithData(textData) {
     typingTitle.textContent = `${textData.name} (${diffName})`;
     updateStats();
     updateVirtualCaret();
+    // Focus vào textarea để người dùng gõ ngay
+    typingTextarea.focus();
 }
 
 // ============================================================
-//  CÁC HÀM XỬ LÝ GÕ (giữ nguyên)
+//  HÀM XỬ LÝ GÕ
 // ============================================================
-function handleFirstKey(e) {
-    if (started) return;
-    if (e.ctrlKey || e.altKey || e.metaKey) return;
-    if (e.key.length === 1) {
-        e.preventDefault();
-        startTypingSession();
-    }
-}
-
 function startTypingSession() {
     if (started) return;
     started = true;
 
+    // Ẩn notice
     const notice = document.getElementById('startNotice');
     if (notice) {
         notice.classList.add('hidden');
         setTimeout(() => notice.remove(), 400);
     }
 
-    if (typingTextarea) {
-        typingTextarea.disabled = false;
-        typingTextarea.focus();
-    }
-
+    // Bắt đầu đếm thời gian
     typingState.startTime = Date.now();
     typingState.timerInterval = setInterval(updateTimer, 100);
-
-    document.removeEventListener('keydown', handleFirstKey);
 }
 
 function handleTextareaInput() {
-    if (!started || typingState.isFinished) return;
+    if (typingState.isFinished) return;
+
+    // Nếu chưa bắt đầu, bắt đầu ngay lập tức (không mất ký tự)
+    if (!started) {
+        startTypingSession();
+        // Vẫn tiếp tục xử lý ký tự vừa nhập
+    }
+
     if (!typingState.startTime) {
         typingState.startTime = Date.now();
     }
@@ -695,7 +687,6 @@ function finishTyping() {
         typingTextarea.removeEventListener('input', handleTextareaInput);
         typingTextarea.disabled = true;
     }
-    document.removeEventListener('keydown', handleFirstKey);
     const caretEl = document.getElementById('virtualCaret');
     if (caretEl) caretEl.classList.add('hidden');
     saveResult();
@@ -711,7 +702,6 @@ function abortTyping() {
         typingTextarea.removeEventListener('input', handleTextareaInput);
         typingTextarea.disabled = true;
     }
-    document.removeEventListener('keydown', handleFirstKey);
     const notice = document.getElementById('startNotice');
     if (notice) {
         notice.classList.add('hidden');
@@ -893,9 +883,6 @@ function handleAddText(e) {
         difficulty
     };
 
-    // Xuất toàn bộ dữ liệu (cả công khai và bí mật) để bạn merge
-    // Nhưng để đơn giản, chỉ xuất văn bản mới, bạn sẽ thêm vào file tương ứng.
-    // Tôi xuất văn bản mới dưới dạng file JSON riêng
     const json = JSON.stringify(newText, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1018,7 +1005,6 @@ retryBtn.addEventListener('click', () => {
                 else showHome();
             });
         } else {
-            // có thể là văn bản bí mật? Không lưu, nên không thử lại được
             showMessage('Lỗi', 'Không thể thử lại văn bản bí mật.');
             showHome();
         }
@@ -1049,5 +1035,4 @@ window.addEventListener('resize', () => {
 // ============================================================
 loadTheme();
 showHome();
-// Tải danh sách văn bản công khai ngay khi khởi động
 fetchPublicTexts();
