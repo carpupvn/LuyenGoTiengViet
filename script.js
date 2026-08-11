@@ -6,13 +6,8 @@
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
 function warn(...args) { if (DEBUG) console.warn(...args); }
-
-// ---- Mật khẩu (SHA-256 + salt) ----
-// Cách tạo hash đúng: mở console trình duyệt và chạy:
-//   sha256(SALT + "mật khẩu của bạn").then(h => console.log(h));
-// rồi dán kết quả vào PASSWORD_HASH bên dưới.
 const SALT = 'LuyenGoTiengViet2026';
-const PASSWORD_HASH = 'abc123...'; // <-- THAY BẰNG HASH THẬT
+const PASSWORD_HASH = '96c11af045eea5fd3823f8c3fecc2339fceceba0de86e02683b94ded3d309d64';
 
 async function sha256(message) {
     const encoder = new TextEncoder();
