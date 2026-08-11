@@ -180,14 +180,21 @@ function getBasePath() {
 const BASE = getBasePath();
 
 // ============================================================
-//  ĐỒNG BỘ text-id LÊN THANH URL (query string)
+//  ĐỒNG BỘ VĂN BẢN ĐANG GÕ LÊN THANH URL (query string)
 // ============================================================
-// Dùng query string (?text-id=...) thay vì path ảo (/text-id=...) vì đây là
-// site tĩnh (GitHub Pages) — path ảo sẽ bị lỗi 404 khi tải lại trang do
-// không có server xử lý rewrite. Query string thì luôn hoạt động, tải lại
-// trang hay chia sẻ link đều mở đúng văn bản đang gõ.
+// Dùng query string thay vì path ảo (/text-id=...) vì đây là site tĩnh
+// (GitHub Pages) — path ảo sẽ bị lỗi 404 khi tải lại trang do không có
+// server xử lý rewrite. Query string thì luôn hoạt động, tải lại trang hay
+// chia sẻ link đều mở đúng văn bản.
+//
+// Có 2 loại tham số, dùng riêng biệt (không xuất hiện đồng thời):
+//   - ?text-id=...  : văn bản CÔNG KHAI, id lấy thẳng từ public/texts.json
+//   - ?ma=...       : văn bản BÍ MẬT, chính là mã bí mật người dùng nhập.
+//     Nhờ vậy link "?ma=..." có thể copy gửi cho người khác, họ mở link là
+//     vào thẳng văn bản để gõ luôn, không cần gõ lại mã.
 function setUrlTextId(id) {
     const url = new URL(window.location.href);
+    url.searchParams.delete('ma');
     if (id) {
         url.searchParams.set('text-id', id);
     } else {
@@ -197,9 +204,32 @@ function setUrlTextId(id) {
     window.history.replaceState({}, '', url);
 }
 
+function setUrlSecretCode(code) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('text-id');
+    if (code) {
+        url.searchParams.set('ma', code);
+    } else {
+        url.searchParams.delete('ma');
+    }
+    window.history.replaceState({}, '', url);
+}
+
+function clearUrlText() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('text-id');
+    url.searchParams.delete('ma');
+    window.history.replaceState({}, '', url);
+}
+
 function getUrlTextId() {
     const params = new URLSearchParams(window.location.search);
     return params.get('text-id');
+}
+
+function getUrlSecretCode() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('ma');
 }
 
 // ============================================================
@@ -374,7 +404,7 @@ function closePopup() {
 function checkPassword() {
     if (popupPassword.value === _resolveAccess()) {
         closePopup();
-        setUrlTextId(null);
+        clearUrlText();
         setTimeout(() => {
             showScreen('addScreen');
             addTextForm.reset();
@@ -435,13 +465,13 @@ function showScreen(id) {
 function showHome() {
     showScreen('homeScreen');
     closePopup();
-    setUrlTextId(null);
+    clearUrlText();
 }
 
 function showSelect() {
     showScreen('selectScreen');
     fetchPublicTexts();
-    setUrlTextId(null);
+    clearUrlText();
 }
 
 function showTyping(textId) {
@@ -519,6 +549,10 @@ async function openSecretText() {
         // #typingScreen, không tự động active màn hình đó).
         showScreen('typingScreen');
         startTypingWithData(data);
+        // Đưa mã bí mật lên URL dạng ?ma=... — người dùng copy link này gửi cho
+        // người khác, họ mở đúng link là vào thẳng văn bản để gõ luôn, không cần
+        // phải nhập lại mã ở màn hình chọn văn bản.
+        setUrlSecretCode(code);
     } else {
         showMessage('Không tìm thấy', 'Không tìm thấy văn bản với mã này.');
     }
@@ -660,8 +694,11 @@ function startTypingWithData(textData) {
     updateVirtualCaret();
     typingTextarea.focus();
 
-    // Cập nhật text-id lên URL để có thể tải lại trang / chia sẻ link đúng văn bản này
-    setUrlTextId(typingState.textId);
+    // LƯU Ý: hàm này KHÔNG tự set URL nữa, vì nó dùng chung cho cả văn bản công
+    // khai lẫn bí mật, mà 2 loại cần hiện 2 dạng tham số khác nhau trên URL
+    // (?text-id=... hay ?ma=...). Việc set URL do nơi GỌI hàm này đảm nhiệm:
+    // xem showTyping() cho văn bản công khai, và openSecretText()/
+    // openFromUrlIfAny() cho văn bản bí mật.
 }
 
 // ============================================================
@@ -1236,39 +1273,47 @@ document.addEventListener('selectionchange', () => {
 });
 
 // ============================================================
-//  MỞ VĂN BẢN THEO text-id CÓ SẴN TRÊN URL (khi tải trang / F5 / chia sẻ link)
+//  MỞ VĂN BẢN THEO ?text-id=... HOẶC ?ma=... CÓ SẴN TRÊN URL
+//  (khi tải trang / F5 / mở link được chia sẻ)
 // ============================================================
-async function openFromUrlIfAny(id) {
-    if (!id) return;
-
-    // Ưu tiên tìm trong danh sách văn bản công khai (publicTexts đã được nạp
-    // bởi fetchPublicTexts() trước khi hàm này chạy).
-    const meta = publicTexts.find(t => t.id === id);
-    if (meta) {
-        showTyping(id);
+async function openFromUrlIfAny(textId, secretCode) {
+    // ?ma=... : mở THẲNG văn bản bí mật bằng mã đã có sẵn trên URL — đây chính
+    // là cơ chế cho phép copy link "?ma=..." gửi cho người khác, họ mở link là
+    // vào ngay màn hình gõ, không cần phải nhập lại mã.
+    if (secretCode) {
+        const data = await fetchSecretText(secretCode);
+        if (data) {
+            showScreen('typingScreen');
+            startTypingWithData(data);
+            setUrlSecretCode(secretCode); // giữ nguyên ?ma=... trên URL
+        } else {
+            showMessage('Không tìm thấy', 'Không tìm thấy văn bản bí mật với mã này.');
+            clearUrlText();
+        }
         return;
     }
 
-    // Không thấy trong danh sách công khai -> thử như văn bản bí mật, dùng
-    // chính text-id trên URL làm mã (chỉ hoạt động nếu người thêm văn bản đặt
-    // mã trùng với id, vì trang tĩnh không có cách nào tra cứu ngược mã bí mật).
-    const secretData = await fetchSecretText(id);
-    if (secretData) {
-        showScreen('typingScreen');
-        startTypingWithData(secretData);
-        return;
+    // ?text-id=... : mở văn bản CÔNG KHAI (publicTexts đã được nạp bởi
+    // fetchPublicTexts() trước khi hàm này chạy).
+    if (textId) {
+        const meta = publicTexts.find(t => t.id === textId);
+        if (meta) {
+            showTyping(textId);
+        } else {
+            showMessage('Không tìm thấy', 'Không tìm thấy văn bản này.');
+            clearUrlText();
+        }
     }
-
-    // Không tìm thấy văn bản nào khớp -> dọn URL để tránh link chết, ở lại trang chủ.
-    setUrlTextId(null);
 }
 
 // ============================================================
 //  KHỞI ĐỘNG
 // ============================================================
-// Đọc text-id NGAY TỪ ĐẦU, trước khi showHome() (showHome sẽ xoá param này
-// khỏi URL) — để vẫn còn giá trị dùng lại sau khi danh sách công khai tải xong.
+// Đọc tham số URL NGAY TỪ ĐẦU, trước khi showHome() (showHome sẽ xoá các
+// tham số này khỏi URL) — để vẫn còn giá trị dùng lại sau khi danh sách công
+// khai tải xong.
 const initialUrlTextId = getUrlTextId();
+const initialUrlSecretCode = getUrlSecretCode();
 loadTheme();
 showHome();
-fetchPublicTexts().then(() => openFromUrlIfAny(initialUrlTextId));
+fetchPublicTexts().then(() => openFromUrlIfAny(initialUrlTextId, initialUrlSecretCode));
