@@ -1,25 +1,18 @@
 // ============================================================
 //  CẤU HÌNH & STATE
-// ============================================================// so với 1 chuỗi/1 mảng số trần trụi, chứ không chặn được người thật sự muốn dò.
-const _CFG_A = 'elaTQmRa'; // base64 của các byte ở VỊ TRÍ CHẴN (0,2,4,...)
-const _CFG_B = 'dG1xbXJ4'; // base64 của các byte ở VỊ TRÍ LẺ  (1,3,5,...)
-const _CFG_K = [21, 8, 44, 3]; // khoá XOR xoay vòng
-const _CFG_S = 13; // độ dịch Caesar
+// ============================================================
 
-function _resolveAccess() {
-    const evenBytes = atob(_CFG_A).split('').map(c => c.charCodeAt(0));
-    const oddBytes = atob(_CFG_B).split('').map(c => c.charCodeAt(0));
-    const total = evenBytes.length + oddBytes.length;
-    const merged = [];
-    for (let i = 0; i < total; i++) {
-        merged.push(i % 2 === 0 ? evenBytes[i >> 1] : oddBytes[i >> 1]);
-    }
-    return merged
-        .map((b, i) => b ^ _CFG_K[i % _CFG_K.length])
-        .map(b => (b - _CFG_S + 256) % 256)
-        .map(c => String.fromCharCode(c))
-        .join('');
+const SALT = 'LuyenGoTiengViet2026';
+const PASSWORD_HASH = 'abc123...'; // BẠN CẦN THAY BẰNG HASH CỦA SALT + "sao t bt"
+
+async function sha256(message) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(message);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
+
 const STORAGE_KEY = 'typingAppData';
 
 const defaultData = {
@@ -123,6 +116,9 @@ const messageOkBtn = $('messageOkBtn');
 
 const themeToggle = $('themeToggle');
 
+const progressBar = $('progressBar');
+const progressLabel = $('progressLabel');
+
 let typingTextarea = null;
 let displayContainer = null;
 let typingWrapper = null;
@@ -142,30 +138,17 @@ function loadData() {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) return JSON.parse(raw);
-    } catch (_) {
-        // localStorage bị chặn (chế độ ẩn danh, cookie bên thứ 3 bị tắt, preview
-        // sandbox...) hoặc dữ liệu lưu bị hỏng. Không được để lỗi này ném ra ngoài,
-        // vì nó xảy ra ngay dòng đầu tiên của script (appData = loadData()) — nếu
-        // không bắt, TOÀN BỘ phần code phía dưới (kể cả các addEventListener gắn cho
-        // nút bấm) sẽ không bao giờ được chạy, khiến mọi nút "không hoạt động" khi
-        // mới mở trang.
-    }
+    } catch (_) {}
     const fallback = { history: [] };
     saveData(fallback);
     return fallback;
 }
 
 function saveData(data) {
-    // Luôn cập nhật appData trong bộ nhớ trước — để app vẫn dùng được trong phiên
-    // hiện tại kể cả khi ghi vào localStorage thất bại.
     appData = data;
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (_) {
-        // Không ghi được vào localStorage (đầy dung lượng, bị chặn...) — bỏ qua,
-        // dữ liệu vẫn hoạt động bình thường trong phiên này, chỉ là sẽ không được
-        // lưu lại sau khi tải lại trang.
-    }
+    } catch (_) {}
 }
 
 // ============================================================
@@ -180,38 +163,21 @@ function getBasePath() {
 const BASE = getBasePath();
 
 // ============================================================
-//  ĐỒNG BỘ VĂN BẢN ĐANG GÕ LÊN THANH URL (query string)
+//  ĐỒNG BỘ VĂN BẢN ĐANG GÕ LÊN THANH URL
 // ============================================================
-// Dùng query string thay vì path ảo (/text-id=...) vì đây là site tĩnh
-// (GitHub Pages) — path ảo sẽ bị lỗi 404 khi tải lại trang do không có
-// server xử lý rewrite. Query string thì luôn hoạt động, tải lại trang hay
-// chia sẻ link đều mở đúng văn bản.
-//
-// Có 2 loại tham số, dùng riêng biệt (không xuất hiện đồng thời):
-//   - ?text-id=...  : văn bản CÔNG KHAI, id lấy thẳng từ public/texts.json
-//   - ?ma=...       : văn bản BÍ MẬT, chính là mã bí mật người dùng nhập.
-//     Nhờ vậy link "?ma=..." có thể copy gửi cho người khác, họ mở link là
-//     vào thẳng văn bản để gõ luôn, không cần gõ lại mã.
 function setUrlTextId(id) {
     const url = new URL(window.location.href);
     url.searchParams.delete('ma');
-    if (id) {
-        url.searchParams.set('text-id', id);
-    } else {
-        url.searchParams.delete('text-id');
-    }
-    // dùng replaceState để không làm phình lịch sử back/forward của trình duyệt
+    if (id) url.searchParams.set('text-id', id);
+    else url.searchParams.delete('text-id');
     window.history.replaceState({}, '', url);
 }
 
 function setUrlSecretCode(code) {
     const url = new URL(window.location.href);
     url.searchParams.delete('text-id');
-    if (code) {
-        url.searchParams.set('ma', code);
-    } else {
-        url.searchParams.delete('ma');
-    }
+    if (code) url.searchParams.set('ma', code);
+    else url.searchParams.delete('ma');
     window.history.replaceState({}, '', url);
 }
 
@@ -310,13 +276,6 @@ function toggleTheme() {
 
     let expandHandled = false;
     const onExpandEnd = () => {
-        // BUG CŨ: setTimeout dự phòng bên dưới chỉ kiểm tra overlay còn nằm trong
-        // DOM hay không để quyết định có gọi lại onExpandEnd() không — nhưng overlay
-        // vẫn còn trong DOM một lúc lâu sau khi onExpandEnd đã chạy xong (đang trong
-        // giai đoạn mờ dần/fade-out), nên bộ đếm 1200ms gần như LUÔN gọi lại hàm này
-        // lần 2, khiến theme bị đảo ngược lại ngay sau khi vừa đổi, lưu sai giá trị
-        // vào localStorage, và tạo thêm một chuỗi fade-out chồng lên chuỗi cũ.
-        // Sửa bằng cờ expandHandled để đảm bảo hàm chỉ chạy đúng MỘT LẦN.
         if (expandHandled) return;
         expandHandled = true;
         overlay.removeEventListener('transitionend', onExpandEnd);
@@ -373,7 +332,7 @@ function loadTheme() {
 themeToggle.addEventListener('click', toggleTheme);
 
 // ============================================================
-//  POPUP MẬT KHẨU
+//  POPUP MẬT KHẨU (SHA‑256 + SALT)
 // ============================================================
 let isPopupClosing = false;
 
@@ -401,8 +360,10 @@ function closePopup() {
     }, 200);
 }
 
-function checkPassword() {
-    if (popupPassword.value === _resolveAccess()) {
+async function checkPassword() {
+    const input = popupPassword.value;
+    const hash = await sha256(SALT + input);
+    if (hash === PASSWORD_HASH) {
         closePopup();
         clearUrlText();
         setTimeout(() => {
@@ -429,7 +390,7 @@ function checkPassword() {
 }
 
 // ============================================================
-//  POPUP THÔNG BÁO TÙY CHỈNH
+//  POPUP THÔNG BÁO
 // ============================================================
 function showMessage(title, content) {
     messageTitle.textContent = title;
@@ -476,9 +437,6 @@ function showSelect() {
 
 function showTyping(textId) {
     showScreen('typingScreen');
-    // Hiện id lên URL NGAY khi vào trang gõ của văn bản này — không đợi tải xong
-    // dữ liệu, không cần biết người dùng đã bấm phím nào chưa. URL phải phản ánh
-    // đúng "đang ở trang gõ của văn bản nào" giống như một sub-page riêng.
     setUrlTextId(textId);
     const meta = publicTexts.find(t => t.id === textId);
     if (meta) {
@@ -544,14 +502,8 @@ async function openSecretText() {
     }
     const data = await fetchSecretText(code);
     if (data) {
-        // BUG CŨ: thiếu dòng chuyển màn hình này khiến màn hình gõ không hiện ra
-        // dù dữ liệu đã tải xong (startTypingWithData chỉ dựng nội dung bên trong
-        // #typingScreen, không tự động active màn hình đó).
         showScreen('typingScreen');
         startTypingWithData(data);
-        // Đưa mã bí mật lên URL dạng ?ma=... — người dùng copy link này gửi cho
-        // người khác, họ mở đúng link là vào thẳng văn bản để gõ luôn, không cần
-        // phải nhập lại mã ở màn hình chọn văn bản.
         setUrlSecretCode(code);
     } else {
         showMessage('Không tìm thấy', 'Không tìm thấy văn bản với mã này.');
@@ -560,7 +512,7 @@ async function openSecretText() {
 }
 
 // ============================================================
-//  KHỞI TẠO GÕ VỚI DỮ LIỆU VĂN BẢN (ĐỒNG BỘ HOÀN TOÀN)
+//  KHỞI TẠO GÕ
 // ============================================================
 function startTypingWithData(textData) {
     const content = textData.content;
@@ -593,16 +545,8 @@ function startTypingWithData(textData) {
     }
     typingWrapper = null;
 
-    // Reset textDisplay
     textDisplay.innerHTML = '';
 
-    // --- START NOTICE ---
-    // QUAN TRỌNG: nằm NGOÀI .typing-wrapper, là phần tử ĐẦU TIÊN trong luồng bình
-    // thường của .text-display — không còn position:absolute chồng lên dòng chữ đầu
-    // tiên như trước nữa (đó là nguyên nhân che chữ, đặc biệt rõ trên điện thoại vì
-    // padding/line-height nhỏ hơn desktop). Khi ẩn, nó tự thu gọn chiều cao về 0
-    // (xem .start-notice.hidden trong style.css) nên nội dung phía dưới trượt lên
-    // lấp đúng khoảng trống, không để lại lỗ hổng.
     let notice = document.getElementById('startNotice');
     if (!notice) {
         notice = document.createElement('div');
@@ -614,22 +558,15 @@ function startTypingWithData(textData) {
     }
     textDisplay.appendChild(notice);
 
-    // --- Tạo container chính để chứa cả hai lớp ---
-    // QUAN TRỌNG: wrapper dùng display:grid (định nghĩa trong style.css, class .typing-wrapper)
-    // để displayContainer và typingTextarea cùng nằm trong 1 ô grid, LUÔN có cùng
-    // kích thước/word-wrap tuyệt đối với nhau. Không set inline style ở đây nữa để
-    // tránh việc JS đè lệch với CSS như trước (nguyên nhân gây lệch ký tự khi xuống dòng).
     const wrapper = document.createElement('div');
     wrapper.className = 'typing-wrapper';
     textDisplay.appendChild(wrapper);
     typingWrapper = wrapper;
 
-    // --- DISPLAY CONTAINER (lớp hiển thị) ---
     displayContainer = document.createElement('div');
     displayContainer.className = 'display-container';
     wrapper.appendChild(displayContainer);
 
-    // Thêm các span
     typingState.chars.forEach((ch, idx) => {
         const span = document.createElement('span');
         span.className = 'char dim';
@@ -640,7 +577,6 @@ function startTypingWithData(textData) {
     });
     typingState.charSpans = displayContainer.querySelectorAll('.char');
 
-    // --- TEXTAREA (lớp nhập liệu trong suốt, chồng khít lên lớp hiển thị nhờ CSS grid) ---
     typingTextarea = document.createElement('textarea');
     typingTextarea.className = 'typing-textarea';
     typingTextarea.setAttribute('spellcheck', 'false');
@@ -650,7 +586,6 @@ function startTypingWithData(textData) {
     typingTextarea.disabled = false;
     wrapper.appendChild(typingTextarea);
 
-    // --- CARET ẢO ---
     let caretEl = document.getElementById('virtualCaret');
     if (!caretEl) {
         caretEl = document.createElement('div');
@@ -659,31 +594,12 @@ function startTypingWithData(textData) {
         wrapper.appendChild(caretEl);
     } else {
         caretEl.classList.remove('hidden');
-        // Đảm bảo caret nằm trong wrapper
         if (caretEl.parentNode !== wrapper) {
             wrapper.appendChild(caretEl);
         }
     }
 
-    // --- SỰ KIỆN ---
     typingTextarea.addEventListener('input', handleTextareaInput);
-
-    // Cho phép con trỏ thật di chuyển tự do (mũi tên, Home/End, click, chọn vùng...)
-    // và cho phép Backspace/Delete/chèn ký tự ở BẤT KỲ vị trí nào — giống hệt một
-    // textarea/Notepad bình thường. Caret ảo (virtual-caret) chỉ có nhiệm vụ vẽ lại
-    // đúng vị trí của con trỏ thật lên trên lớp hiển thị (xem listener 'selectionchange'
-    // ở cuối file) — không còn ép chế độ "chọn 1 ký tự để gõ đè" như trước nữa.
-
-    // (Sự kiện click vào textDisplay để focus vùng gõ được gắn MỘT LẦN DUY NHẤT bên
-    // ngoài hàm này — xem phía dưới file — vì textDisplay là node cố định, không bị
-    // tạo lại mỗi lần vào màn hình gõ; gắn listener ở đây sẽ bị cộng dồn qua mỗi lần
-    // đổi văn bản/thử lại.)
-
-    // Click vào một ký tự bất kỳ trong phần đã gõ để đưa con trỏ THẬT về đúng đó —
-    // để trình duyệt tự xử lý (textarea và lớp hiển thị dùng chung font/kích thước
-    // nên toạ độ click luôn khớp đúng ký tự). Từ đó gõ/sửa/xoá diễn ra bình thường
-    // như Notepad; caret ảo sẽ tự cập nhật theo vị trí con trỏ thật (xem 'selectionchange').
-
     typingTextarea.addEventListener('paste', (e) => e.preventDefault());
     typingTextarea.addEventListener('copy', (e) => e.preventDefault());
     typingTextarea.addEventListener('cut', (e) => e.preventDefault());
@@ -692,13 +608,8 @@ function startTypingWithData(textData) {
     typingTitle.textContent = `${textData.name} (${diffName})`;
     updateStats();
     updateVirtualCaret();
+    updateProgress();
     typingTextarea.focus();
-
-    // LƯU Ý: hàm này KHÔNG tự set URL nữa, vì nó dùng chung cho cả văn bản công
-    // khai lẫn bí mật, mà 2 loại cần hiện 2 dạng tham số khác nhau trên URL
-    // (?text-id=... hay ?ma=...). Việc set URL do nơi GỌI hàm này đảm nhiệm:
-    // xem showTyping() cho văn bản công khai, và openSecretText()/
-    // openFromUrlIfAny() cho văn bản bí mật.
 }
 
 // ============================================================
@@ -736,9 +647,6 @@ function handleTextareaInput() {
     }
 }
 
-// Đồng bộ trạng thái hiển thị (span đúng/sai/mờ + stats + caret ảo) dựa trên
-// nội dung hiện tại của typingTextarea.value. Dùng chung cho cả khi gõ bình thường
-// (input event) và khi người dùng click vào ký tự cũ để quay lại sửa.
 function syncFromValue() {
     const inputText = typingTextarea.value;
     const typedLen = inputText.length;
@@ -769,13 +677,8 @@ function syncFromValue() {
         const isCorrect = (ch === chars[i]);
         span.className = isCorrect ? 'char correct' : 'char wrong';
         if (isCorrect) {
-            // Gõ đúng rồi thì bỏ gợi ý (nếu trước đó từng sai và có gợi ý hiển thị).
             span.removeAttribute('data-expected');
         } else {
-            // Gõ sai: giữ lại ký tự ĐÚNG (chars[i]) trong data-expected để CSS vẽ
-            // một gợi ý nhỏ ngay phía trên ô đó (xem .char.wrong::before trong
-            // style.css) — nhờ vậy khi dời con trỏ lui lại để sửa, người dùng vẫn
-            // biết cần gõ ký tự gì mà không phải nhớ hoặc đếm ngược lại văn bản gốc.
             span.dataset.expected = chars[i] === ' ' ? '␣' : chars[i];
         }
     }
@@ -792,13 +695,12 @@ function syncFromValue() {
             typingState.charTimestamps.push(now);
         }
     }
-    // Nếu người dùng click lùi lại (xoá bớt timestamps thừa) thì cắt luôn mảng timestamps
-    // cho khớp độ dài đã gõ, tránh sai lệch số liệu tốc độ.
     if (typingState.charTimestamps.length > typedLen) {
         typingState.charTimestamps.length = typedLen;
     }
 
     updateStats();
+    updateProgress();
     if (typingState.startTime) {
         updateWpmHistory(Date.now() - typingState.startTime);
     }
@@ -808,8 +710,6 @@ function syncFromValue() {
 function updateVirtualCaret() {
     const caretEl = document.getElementById('virtualCaret');
     if (!caretEl || !typingWrapper || !typingTextarea) return;
-    // Dùng đúng vị trí con trỏ thật (selectionStart) để caret ảo LUÔN trùng khớp,
-    // dù đang gõ nối bình thường ở cuối hay đang sửa tại chỗ ở giữa văn bản.
     const idx = typingTextarea.selectionStart;
     const spans = typingState.charSpans;
     if (!spans || spans.length === 0 || idx >= spans.length) {
@@ -820,10 +720,6 @@ function updateVirtualCaret() {
     const target = spans[idx];
     if (!target) return;
 
-    // Tính vị trí caret theo hệ toạ độ "nội dung" bên trong typingWrapper (kể cả
-    // phần đang bị cuộn khuất), bằng cách cộng thêm scrollTop/scrollLeft hiện tại.
-    // Trước đây chỉ lấy hiệu số getBoundingClientRect nên khi wrapper bị cuộn,
-    // caret ảo tính sai vị trí -> để lộ caret thật ở chỗ khác.
     const wrapperRect = typingWrapper.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
     const left = (targetRect.left - wrapperRect.left) + typingWrapper.scrollLeft;
@@ -833,7 +729,6 @@ function updateVirtualCaret() {
     caretEl.style.top = top + 'px';
     caretEl.style.height = targetRect.height + 'px';
 
-    // Khoanh nhẹ ô ký tự đang sửa (khi con trỏ ở giữa văn bản đã gõ) để dễ nhận biết.
     const prevEditing = displayContainer.querySelector('.char.editing');
     if (prevEditing && prevEditing !== target) prevEditing.classList.remove('editing');
     if (idx < typingTextarea.value.length) {
@@ -842,7 +737,6 @@ function updateVirtualCaret() {
         prevEditing.classList.remove('editing');
     }
 
-    // Tự cuộn wrapper để caret luôn nằm trong vùng nhìn thấy.
     const caretTopInView = targetRect.top - wrapperRect.top;
     const caretBottomInView = targetRect.bottom - wrapperRect.top;
     if (caretTopInView < 0) {
@@ -881,6 +775,27 @@ function updateStats() {
         typingAccuracy.textContent = `🎯 ${acc}%`;
     } else {
         typingAccuracy.textContent = '🎯 100%';
+    }
+}
+
+function updateProgress() {
+    const total = typingState.chars.length;
+    const typed = typingState.currentIndex;
+    if (total === 0) {
+        progressBar.style.width = '0%';
+        progressLabel.textContent = '0%';
+        return;
+    }
+    const pct = Math.min(100, Math.round((typed / total) * 100));
+    progressBar.style.width = pct + '%';
+    progressLabel.textContent = pct + '%';
+
+    if (pct < 30) {
+        progressBar.style.background = 'var(--progress-low)';
+    } else if (pct < 70) {
+        progressBar.style.background = 'var(--progress-mid)';
+    } else {
+        progressBar.style.background = 'var(--progress-high)';
     }
 }
 
@@ -928,7 +843,7 @@ function abortTyping() {
 }
 
 // ============================================================
-//  LƯU KẾT QUẢ – CHỈ GIỮ 5 LẦN GẦN NHẤT
+//  LƯU KẾT QUẢ
 // ============================================================
 function saveResult() {
     const typed = typingState.currentIndex;
@@ -1068,7 +983,7 @@ function drawChart(record) {
 }
 
 // ============================================================
-//  THÊM VĂN BẢN - XUẤT JSON
+//  THÊM VĂN BẢN
 // ============================================================
 function handleAddText(e) {
     e.preventDefault();
@@ -1139,10 +1054,6 @@ function initSlider() {
 
     function getValueFromEvent(e) {
         const rect = slider.getBoundingClientRect();
-        // BUG CŨ: dùng `e.clientX || e.touches[0].clientX` — nếu clientX đúng bằng 0
-        // (chuột ở sát mép trái viewport) thì `0` bị coi là falsy, code rơi vào
-        // nhánh e.touches[0] vốn không tồn tại với sự kiện chuột -> ném lỗi runtime.
-        // Kiểm tra rõ ràng bằng `in` thay vì dựa vào giá trị truthy.
         const clientX = ('clientX' in e) ? e.clientX : e.touches[0].clientX;
         const x = clientX - rect.left;
         const percent = Math.min(1, Math.max(0, x / rect.width));
@@ -1220,10 +1131,6 @@ backHomeFromAdd.addEventListener('click', showHome);
 backHomeFromResult.addEventListener('click', showHome);
 abortTypingBtn.addEventListener('click', abortTyping);
 
-// Click vào vùng hiển thị văn bản (kể cả khoảng trống ngoài chữ) để focus vào ô gõ.
-// Gắn MỘT LẦN DUY NHẤT ở đây (không phải trong startTypingWithData) vì textDisplay
-// là node cố định — gắn lại mỗi lần vào màn hình gõ sẽ khiến listener cộng dồn mãi
-// qua mỗi lần đổi văn bản/thử lại (bug rò rỉ listener).
 textDisplay.addEventListener('click', () => {
     if (typingTextarea && !typingTextarea.disabled) {
         typingTextarea.focus();
@@ -1263,9 +1170,6 @@ window.addEventListener('resize', () => {
     }
 });
 
-// Con trỏ thật giờ di chuyển tự do (click, mũi tên, Home/End...) như một textarea
-// bình thường. Lắng nghe 'selectionchange' để caret ẢO luôn bám đúng theo caret THẬT
-// bất kể do đâu mà nó di chuyển, không chỉ khi gõ thêm ký tự.
 document.addEventListener('selectionchange', () => {
     if (typingTextarea && document.activeElement === typingTextarea) {
         updateVirtualCaret();
@@ -1273,19 +1177,15 @@ document.addEventListener('selectionchange', () => {
 });
 
 // ============================================================
-//  MỞ VĂN BẢN THEO ?text-id=... HOẶC ?ma=... CÓ SẴN TRÊN URL
-//  (khi tải trang / F5 / mở link được chia sẻ)
+//  MỞ VĂN BẢN THEO URL
 // ============================================================
 async function openFromUrlIfAny(textId, secretCode) {
-    // ?ma=... : mở THẲNG văn bản bí mật bằng mã đã có sẵn trên URL — đây chính
-    // là cơ chế cho phép copy link "?ma=..." gửi cho người khác, họ mở link là
-    // vào ngay màn hình gõ, không cần phải nhập lại mã.
     if (secretCode) {
         const data = await fetchSecretText(secretCode);
         if (data) {
             showScreen('typingScreen');
             startTypingWithData(data);
-            setUrlSecretCode(secretCode); // giữ nguyên ?ma=... trên URL
+            setUrlSecretCode(secretCode);
         } else {
             showMessage('Không tìm thấy', 'Không tìm thấy văn bản bí mật với mã này.');
             clearUrlText();
@@ -1293,8 +1193,6 @@ async function openFromUrlIfAny(textId, secretCode) {
         return;
     }
 
-    // ?text-id=... : mở văn bản CÔNG KHAI (publicTexts đã được nạp bởi
-    // fetchPublicTexts() trước khi hàm này chạy).
     if (textId) {
         const meta = publicTexts.find(t => t.id === textId);
         if (meta) {
@@ -1309,9 +1207,6 @@ async function openFromUrlIfAny(textId, secretCode) {
 // ============================================================
 //  KHỞI ĐỘNG
 // ============================================================
-// Đọc tham số URL NGAY TỪ ĐẦU, trước khi showHome() (showHome sẽ xoá các
-// tham số này khỏi URL) — để vẫn còn giá trị dùng lại sau khi danh sách công
-// khai tải xong.
 const initialUrlTextId = getUrlTextId();
 const initialUrlSecretCode = getUrlSecretCode();
 loadTheme();

@@ -15,6 +15,9 @@
     --btn-outline-text: #0f172a;
     --btn-outline-hover-bg: #0f172a;
     --btn-outline-hover-text: #f5f7fa;
+    --progress-low: #f44336;
+    --progress-mid: #ff9800;
+    --progress-high: #4caf50;
 }
 
 .dark {
@@ -34,6 +37,9 @@
     --btn-outline-text: #f8fafc;
     --btn-outline-hover-bg: #f8fafc;
     --btn-outline-hover-text: #05070d;
+    --progress-low: #ef5350;
+    --progress-mid: #ffa726;
+    --progress-high: #66bb6a;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -205,11 +211,49 @@ body {
 .badge.diff-2 { background: #ff9800; color: #fff; }
 .badge.diff-3 { background: #f44336; color: #fff; }
 
+/* Progress Bar */
+.progress-container {
+    width: 100%;
+    height: 6px;
+    background: var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 8px 0 2px 0;
+    transition: background 0.3s;
+}
+.progress-bar {
+    height: 100%;
+    width: 0%;
+    border-radius: 10px;
+    transition: width 0.2s ease, background 0.3s;
+    background: var(--progress-high);
+    position: relative;
+}
+.progress-bar::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
+    transform: translateX(-100%);
+    animation: shimmer 2s infinite;
+}
+@keyframes shimmer {
+    100% { transform: translateX(100%); }
+}
+.progress-label {
+    text-align: right;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    letter-spacing: 0.3px;
+}
+
 .typing-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 6px;
     flex-wrap: wrap;
     gap: 8px;
 }
@@ -269,7 +313,6 @@ body {
     overflow-y: auto;
     overflow-x: hidden;
 }
-/* Lớp hiển thị & lớp textarea PHẢI dùng chung 1 ô grid để không bao giờ lệch kích thước/word-wrap với nhau */
 .display-container,
 .typing-textarea {
     grid-column: 1;
@@ -303,9 +346,6 @@ body {
     color: #fca5a5;
     background: #7f1d1d;
 }
-/* Gợi ý ký tự đúng, hiển thị nhỏ ngay phía trên ô gõ sai — giúp người dùng biết
-   cần sửa thành ký tự gì khi dời con trỏ quay lại mà không phải đoán/đếm lại
-   trong văn bản gốc. */
 .char.wrong::before {
     content: attr(data-expected);
     position: absolute;
@@ -638,6 +678,16 @@ body {
     transition: clip-path 0.7s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s ease;
 }
 
+.credit {
+    margin-top: 28px;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    opacity: 0.5;
+    text-align: left;
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+}
+
 @media (max-width: 600px) {
     .container { padding: 16px; }
     #homeScreen { padding: 40px 16px; }
@@ -655,16 +705,13 @@ body {
     .start-message { font-size: 0.9rem; }
     .theme-toggle { top: calc(10px + env(safe-area-inset-top, 0px)); right: 10px; width: 36px; height: 36px; font-size: 1.1rem; }
 
-    /* Thanh trạng thái khi gõ: gọn lại, không tràn hàng trên màn hẹp */
     .typing-header .info { font-size: 0.8rem; }
     .typing-header .info span { margin-right: 10px; display: inline-block; margin-bottom: 4px; }
     .typing-stats { gap: 16px; font-size: 0.85rem; }
 
-    /* Vùng chạm slider độ khó to hơn cho ngón tay */
     .custom-slider { height: 8px; margin: 18px 0; }
     .slider-thumb { width: 26px; height: 26px; }
 
-    /* Popup: nút xếp chồng, rộng full để bấm chính xác hơn trên màn nhỏ */
     .popup-box { padding: 28px 22px; }
     .popup-actions { flex-direction: column-reverse; }
     .popup-actions .btn { width: 100%; }
@@ -679,7 +726,6 @@ body {
     #homeScreen h1 { font-size: 1.9rem; }
     .display-container, .typing-textarea { font-size: 1.05rem; padding: 14px; }
 }
-/* Ẩn scrollbar riêng của textarea — việc cuộn giờ do .typing-wrapper đảm nhiệm duy nhất */
 .typing-textarea::-webkit-scrollbar {
     width: 0;
     background: transparent;
