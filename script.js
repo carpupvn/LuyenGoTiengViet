@@ -775,18 +775,24 @@ function renderResult() {
 
 function drawChart(record) {
     const canvas = speedChart;
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const data = typingState.wpmHistory || [];
+
+    // Lấy kích thước thực từ CSS
     const rect = canvas.parentElement.getBoundingClientRect();
-    const width = rect.width || 600;
-    const height = 200;
+    let width = canvas.clientWidth || rect.width || 600;
+    let height = canvas.clientHeight || 200;
+    // Đảm bảo kích thước hợp lý
+    if (width < 100) width = 600;
+    if (height < 50) height = 200;
+
     canvas.width = width;
     canvas.height = height;
 
-    const computedStyle = getComputedStyle(document.body);
-    const textColor = computedStyle.getPropertyValue('--text').trim() || '#0f172a';
-    const textMuted = computedStyle.getPropertyValue('--text-muted').trim() || '#64748b';
-    const borderColor = computedStyle.getPropertyValue('--border').trim() || '#e2e8f0';
+    const data = typingState.wpmHistory || [];
+    const textColor = getComputedStyle(document.body).getPropertyValue('--text').trim() || '#0f172a';
+    const textMuted = getComputedStyle(document.body).getPropertyValue('--text-muted').trim() || '#64748b';
+    const borderColor = getComputedStyle(document.body).getPropertyValue('--border').trim() || '#e2e8f0';
 
     if (data.length < 2) {
         ctx.clearRect(0, 0, width, height);
@@ -797,7 +803,7 @@ function drawChart(record) {
         return;
     }
 
-    const pad = { top: 20, bottom: 30, left: 40, right: 20 };
+    const pad = { top: 30, bottom: 30, left: 50, right: 20 };
     const chartW = width - pad.left - pad.right;
     const chartH = height - pad.top - pad.bottom;
     const maxTime = Math.max(...data.map(d => d.time)) || 1;
@@ -944,6 +950,9 @@ textDisplay.addEventListener('click', () => {
 });
 
 function retryCurrentText() {
+    // Luôn chuyển sang màn hình gõ trước khi tải lại
+    showScreen('typingScreen');
+
     if (isSecretMode && currentSecretCode) {
         fetchSecretText(currentSecretCode).then(data => {
             if (data) startTypingWithData(data);
@@ -951,6 +960,7 @@ function retryCurrentText() {
         });
         return;
     }
+
     if (typingState.textId) {
         const meta = publicTexts.find(t => t.id === typingState.textId);
         if (meta) {
@@ -964,13 +974,13 @@ function retryCurrentText() {
         }
         return;
     }
+
     showHome();
 }
 
 retryBtn.addEventListener('click', retryCurrentText);
 if (retryFromResultBtn) {
     retryFromResultBtn.addEventListener('click', () => {
-        showScreen('typingScreen');
         setTimeout(retryCurrentText, 100);
     });
 }
