@@ -2,12 +2,12 @@
 //  CẤU HÌNH & STATE
 // ============================================================
 
-// Bật DEBUG = true khi cần xem log fetch trong console, tắt khi deploy thật
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
 function warn(...args) { if (DEBUG) console.warn(...args); }
-const SALT = 'LuyenGoTiengViet2026';
-const PASSWORD_HASH = '96c11af045eea5fd3823f8c3fecc2339fceceba0de86e02683b94ded3d309d64';
+const ENCODED_SALT = 'teiVgneiToGneyuL';
+function getSalt() { return ENCODED_SALT.split('').reverse().join(''); }
+const PASSWORD_HASH = '4d664964ff4f390031f19a4c41cc46ad81a24dc2aad868d0a90812d5057cbf47';
 
 async function sha256(message) {
     const encoder = new TextEncoder();
@@ -17,7 +17,6 @@ async function sha256(message) {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// ---- Biến toàn cục ----
 const STORAGE_KEY = 'typingAppData';
 
 let appData = loadData();
@@ -41,12 +40,9 @@ let typingState = {
 
 let started = false;
 let publicTexts = [];
-let currentSecretCode = null; // lưu mã bí mật để retry
-let isSecretMode = false;     // đánh dấu đang gõ văn bản bí mật
+let currentSecretCode = null;
+let isSecretMode = false;
 
-// ============================================================
-//  DOM REFS
-// ============================================================
 const $ = id => document.getElementById(id);
 const homeScreen = $('homeScreen');
 const selectScreen = $('selectScreen');
@@ -58,10 +54,10 @@ const goTypingBtn = $('goTypingBtn');
 const backHomeFromSelect = $('backHomeFromSelect');
 const backHomeFromAdd = $('backHomeFromAdd');
 const backHomeFromResult = $('backHomeFromResult');
-const backHomeFromTyping = $('backHomeFromTyping'); // có thể null nếu HTML chưa có nút này
+const backHomeFromTyping = $('backHomeFromTyping');
 const abortTypingBtn = $('abortTypingBtn');
 const retryBtn = $('retryBtn');
-const retryFromResultBtn = $('retryFromResultBtn'); // có thể null nếu HTML chưa có nút này
+const retryFromResultBtn = $('retryFromResultBtn');
 const addTextBtn = $('addTextBtn');
 
 const publicTextList = $('publicTextList');
@@ -118,17 +114,11 @@ let typingTextarea = null;
 let displayContainer = null;
 let typingWrapper = null;
 
-// ============================================================
-//  HÀM TIỆN ÍCH
-// ============================================================
 function getDifficultyName(val) {
     const map = ['Dễ', 'Trung bình', 'Khó', 'Cực khó'];
     return map[val] || 'Dễ';
 }
 
-// ============================================================
-//  LƯU TRỮ LỊCH SỬ (LOCALSTORAGE)
-// ============================================================
 function loadData() {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
@@ -146,9 +136,6 @@ function saveData(data) {
     } catch (_) {}
 }
 
-// ============================================================
-//  LẤY BASE PATH CHO GITHUB PAGES
-// ============================================================
 function getBasePath() {
     const path = window.location.pathname;
     if (path === '/' || path === '') return '';
@@ -156,9 +143,6 @@ function getBasePath() {
 }
 const BASE = getBasePath();
 
-// ============================================================
-//  ĐỒNG BỘ VĂN BẢN ĐANG GÕ LÊN THANH URL
-// ============================================================
 function setUrlTextId(id) {
     const url = new URL(window.location.href);
     url.searchParams.delete('ma');
@@ -190,9 +174,6 @@ function getUrlSecretCode() {
     return new URLSearchParams(window.location.search).get('ma');
 }
 
-// ============================================================
-//  FETCH DỮ LIỆU TỪ GITHUB
-// ============================================================
 async function fetchPublicTexts() {
     try {
         const url = `${BASE}/public/texts.json`;
@@ -238,9 +219,6 @@ async function fetchSecretText(code) {
     }
 }
 
-// ============================================================
-//  THEME TOGGLE (hiệu ứng "circle reveal")
-// ============================================================
 function toggleTheme() {
     const btn = themeToggle;
     const rect = btn.getBoundingClientRect();
@@ -258,7 +236,7 @@ function toggleTheme() {
     overlay.style.opacity = '1';
     document.body.appendChild(overlay);
 
-    void overlay.offsetHeight; // force reflow
+    void overlay.offsetHeight;
     requestAnimationFrame(() => {
         overlay.style.clipPath = `circle(150% at ${x}px ${y}px)`;
     });
@@ -309,9 +287,6 @@ function loadTheme() {
 }
 themeToggle.addEventListener('click', toggleTheme);
 
-// ============================================================
-//  POPUP MẬT KHẨU (SHA-256 + SALT)
-// ============================================================
 let isPopupClosing = false;
 
 function openPopup() {
@@ -340,7 +315,7 @@ function closePopup() {
 
 async function checkPassword() {
     const input = popupPassword.value;
-    const hash = await sha256(SALT + input);
+    const hash = await sha256(getSalt() + input);
     if (hash === PASSWORD_HASH) {
         closePopup();
         clearUrlText();
@@ -366,9 +341,6 @@ async function checkPassword() {
     }
 }
 
-// ============================================================
-//  POPUP THÔNG BÁO
-// ============================================================
 function showMessage(title, content) {
     messageTitle.textContent = title;
     messageContent.textContent = content;
@@ -377,7 +349,6 @@ function showMessage(title, content) {
 messageOkBtn.addEventListener('click', function () {
     messagePopup.classList.remove('active');
 });
-// Dùng function thường (không phải arrow) để `this` trỏ đúng vào messagePopup
 messagePopup.addEventListener('click', function (e) {
     if (e.target === this) this.classList.remove('active');
 });
@@ -385,9 +356,6 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') messagePopup.classList.remove('active');
 });
 
-// ============================================================
-//  ĐIỀU HƯỚNG MÀN HÌNH
-// ============================================================
 function showScreen(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     const el = document.getElementById(id);
@@ -436,9 +404,6 @@ function showAdd() {
     openPopup();
 }
 
-// ============================================================
-//  HIỂN THỊ DANH SÁCH VĂN BẢN CÔNG KHAI
-// ============================================================
 function renderPublicTexts() {
     const container = publicTextList;
     container.innerHTML = '';
@@ -464,9 +429,6 @@ function renderPublicTexts() {
     });
 }
 
-// ============================================================
-//  MỞ VĂN BẢN BÍ MẬT
-// ============================================================
 async function openSecretText() {
     const code = secretCodeInput.value.trim();
     if (!code) {
@@ -486,9 +448,6 @@ async function openSecretText() {
     secretCodeInput.value = '';
 }
 
-// ============================================================
-//  KHỞI TẠO GÕ
-// ============================================================
 function startTypingWithData(textData) {
     if (typingState.timerInterval) {
         clearInterval(typingState.timerInterval);
@@ -516,7 +475,6 @@ function startTypingWithData(textData) {
     typingWrapper = null;
     textDisplay.innerHTML = '';
 
-    // Thông báo bắt đầu
     const notice = document.createElement('div');
     notice.id = 'startNotice';
     notice.className = 'start-notice';
@@ -569,9 +527,6 @@ function startTypingWithData(textData) {
     typingTextarea.focus();
 }
 
-// ============================================================
-//  XỬ LÝ GÕ
-// ============================================================
 function startTypingSession() {
     if (started) return;
     started = true;
@@ -756,9 +711,6 @@ function abortTyping() {
     showHome();
 }
 
-// ============================================================
-//  LƯU KẾT QUẢ
-// ============================================================
 function saveResult() {
     const typed = typingState.currentIndex;
     if (typed === 0) return;
@@ -790,9 +742,6 @@ function saveResult() {
     typingState.lastResult = record;
 }
 
-// ============================================================
-//  HIỂN THỊ KẾT QUẢ & BIỂU ĐỒ
-// ============================================================
 function renderResult() {
     const record = typingState.lastResult;
     if (!record) return;
@@ -886,9 +835,6 @@ function drawChart(record) {
     ctx.fillText('0', pad.left - 6, pad.top + chartH);
 }
 
-// ============================================================
-//  THÊM VĂN BẢN
-// ============================================================
 function handleAddText(e) {
     e.preventDefault();
     const name = addName.value.trim();
@@ -930,9 +876,6 @@ function handleAddText(e) {
     setTimeout(showHome, 1000);
 }
 
-// ============================================================
-//  CUSTOM SLIDER
-// ============================================================
 function updateSliderUI(val) {
     const max = 3;
     const percent = (val / max) * 100;
@@ -973,9 +916,6 @@ function initSlider() {
 }
 initSlider();
 
-// ============================================================
-//  TOGGLE CÔNG KHAI / BÍ MẬT
-// ============================================================
 if (visibilityToggle) {
     visibilityToggle.addEventListener('change', function () {
         const labels = document.querySelectorAll('.toggle-label');
@@ -992,9 +932,6 @@ if (visibilityToggle) {
     });
 }
 
-// ============================================================
-//  SỰ KIỆN ĐIỀU HƯỚNG
-// ============================================================
 goTypingBtn.addEventListener('click', showSelect);
 backHomeFromSelect.addEventListener('click', showHome);
 backHomeFromAdd.addEventListener('click', showHome);
@@ -1006,7 +943,6 @@ textDisplay.addEventListener('click', () => {
     if (typingTextarea && !typingTextarea.disabled) typingTextarea.focus();
 });
 
-// ---- Làm lại: xử lý đúng cả văn bản công khai lẫn bí mật ----
 function retryCurrentText() {
     if (isSecretMode && currentSecretCode) {
         fetchSecretText(currentSecretCode).then(data => {
@@ -1055,9 +991,6 @@ document.addEventListener('selectionchange', () => {
     if (typingTextarea && document.activeElement === typingTextarea) updateVirtualCaret();
 });
 
-// ============================================================
-//  MỞ VĂN BẢN THEO URL
-// ============================================================
 async function openFromUrlIfAny(textId, secretCode) {
     if (secretCode) {
         const data = await fetchSecretText(secretCode);
@@ -1083,9 +1016,6 @@ async function openFromUrlIfAny(textId, secretCode) {
     }
 }
 
-// ============================================================
-//  KHỞI ĐỘNG
-// ============================================================
 const initialUrlTextId = getUrlTextId();
 const initialUrlSecretCode = getUrlSecretCode();
 loadTheme();
