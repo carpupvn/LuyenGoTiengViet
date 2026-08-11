@@ -2,8 +2,17 @@
 //  CẤU HÌNH & STATE
 // ============================================================
 
+// Bật DEBUG = true khi cần xem log fetch trong console, tắt khi deploy thật
+const DEBUG = false;
+function log(...args) { if (DEBUG) console.log(...args); }
+function warn(...args) { if (DEBUG) console.warn(...args); }
+
+// ---- Mật khẩu (SHA-256 + salt) ----
+// Cách tạo hash đúng: mở console trình duyệt và chạy:
+//   sha256(SALT + "mật khẩu của bạn").then(h => console.log(h));
+// rồi dán kết quả vào PASSWORD_HASH bên dưới.
 const SALT = 'LuyenGoTiengViet2026';
-const PASSWORD_HASH = 'abc123...'; // BẠN CẦN THAY BẰNG HASH CỦA SALT + "sao t bt"
+const PASSWORD_HASH = 'abc123...'; // <-- THAY BẰNG HASH THẬT
 
 async function sha256(message) {
     const encoder = new TextEncoder();
@@ -13,20 +22,8 @@ async function sha256(message) {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// ---- Biến toàn cục ----
 const STORAGE_KEY = 'typingAppData';
-
-const defaultData = {
-    texts: [
-        {
-            id: 'text1',
-            name: 'Văn bản mẫu',
-            content: 'Đây là một văn bản mẫu để luyện gõ tiếng Việt.',
-            secret: '',
-            difficulty: 0
-        }
-    ],
-    history: []
-};
 
 let appData = loadData();
 let typingState = {
@@ -49,6 +46,8 @@ let typingState = {
 
 let started = false;
 let publicTexts = [];
+let currentSecretCode = null; // lưu mã bí mật để retry
+let isSecretMode = false;     // đánh dấu đang gõ văn bản bí mật
 
 // ============================================================
 //  DOM REFS
@@ -64,8 +63,10 @@ const goTypingBtn = $('goTypingBtn');
 const backHomeFromSelect = $('backHomeFromSelect');
 const backHomeFromAdd = $('backHomeFromAdd');
 const backHomeFromResult = $('backHomeFromResult');
+const backHomeFromTyping = $('backHomeFromTyping'); // có thể null nếu HTML chưa có nút này
 const abortTypingBtn = $('abortTypingBtn');
 const retryBtn = $('retryBtn');
+const retryFromResultBtn = $('retryFromResultBtn'); // có thể null nếu HTML chưa có nút này
 const addTextBtn = $('addTextBtn');
 
 const publicTextList = $('publicTextList');
@@ -73,7 +74,6 @@ const secretCodeInput = $('secretCodeInput');
 const secretGoBtn = $('secretGoBtn');
 
 const textDisplay = $('textDisplay');
-const startNotice = $('startNotice');
 const virtualCaret = $('virtualCaret');
 const typingTitle = $('typingTitle');
 const typingTimer = $('typingTimer');
@@ -157,8 +157,7 @@ function saveData(data) {
 function getBasePath() {
     const path = window.location.pathname;
     if (path === '/' || path === '') return '';
-    const base = path.replace(/\/$/, '');
-    return base;
+    return path.replace(/\/$/, '');
 }
 const BASE = getBasePath();
 
@@ -189,13 +188,11 @@ function clearUrlText() {
 }
 
 function getUrlTextId() {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('text-id');
+    return new URLSearchParams(window.location.search).get('text-id');
 }
 
 function getUrlSecretCode() {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('ma');
+    return new URLSearchParams(window.location.search).get('ma');
 }
 
 // ============================================================
@@ -204,31 +201,29 @@ function getUrlSecretCode() {
 async function fetchPublicTexts() {
     try {
         const url = `${BASE}/public/texts.json`;
-        console.log('📥 Fetching public texts:', url);
+        log('📥 Fetching public texts:', url);
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-        const list = await res.json();
-        publicTexts = list;
-        console.log('✅ Đã tải danh sách:', publicTexts);
-        renderPublicTexts();
+        publicTexts = await res.json();
+        log('✅ Đã tải danh sách:', publicTexts);
     } catch (e) {
-        console.warn('❌ Không thể tải danh sách văn bản:', e);
+        warn('❌ Không thể tải danh sách văn bản:', e);
         publicTexts = [];
-        renderPublicTexts();
     }
+    renderPublicTexts();
 }
 
 async function fetchTextByFilename(filename) {
     try {
         const url = `${BASE}/public/${filename}`;
-        console.log('📥 Fetching text:', url);
+        log('📥 Fetching text:', url);
         const res = await fetch(url);
         if (!res.ok) throw new Error('Không tìm thấy file');
         const data = await res.json();
-        console.log('✅ Đã tải văn bản:', data.name);
+        log('✅ Đã tải văn bản:', data.name);
         return data;
     } catch (e) {
-        console.warn('❌ Lỗi tải văn bản:', e);
+        warn('❌ Lỗi tải văn bản:', e);
         return null;
     }
 }
@@ -236,23 +231,23 @@ async function fetchTextByFilename(filename) {
 async function fetchSecretText(code) {
     try {
         const url = `${BASE}/secret/${code}.json`;
-        console.log('📥 Fetching secret:', url);
+        log('📥 Fetching secret:', url);
         const res = await fetch(url);
         if (!res.ok) throw new Error('Không tìm thấy văn bản bí mật');
         const data = await res.json();
-        console.log('✅ Đã tải secret:', data.name);
+        log('✅ Đã tải secret:', data.name);
         return data;
     } catch (e) {
-        console.warn('❌ Lỗi tải secret:', e);
+        warn('❌ Lỗi tải secret:', e);
         return null;
     }
 }
 
 // ============================================================
-//  THEME TOGGLE
+//  THEME TOGGLE (hiệu ứng "circle reveal")
 // ============================================================
 function toggleTheme() {
-    const btn = document.getElementById('themeToggle');
+    const btn = themeToggle;
     const rect = btn.getBoundingClientRect();
     const x = rect.left + rect.width / 2;
     const y = rect.top + rect.height / 2;
@@ -268,8 +263,7 @@ function toggleTheme() {
     overlay.style.opacity = '1';
     document.body.appendChild(overlay);
 
-    void overlay.offsetHeight;
-
+    void overlay.offsetHeight; // force reflow
     requestAnimationFrame(() => {
         overlay.style.clipPath = `circle(150% at ${x}px ${y}px)`;
     });
@@ -287,7 +281,6 @@ function toggleTheme() {
             document.body.classList.remove('dark');
             btn.textContent = '🌙';
         }
-
         localStorage.setItem('theme', targetTheme);
 
         if (resultScreen.classList.contains('active') && typingState.lastResult) {
@@ -296,43 +289,33 @@ function toggleTheme() {
 
         setTimeout(() => {
             overlay.style.opacity = '0';
-
             const onFadeEnd = () => {
                 overlay.removeEventListener('transitionend', onFadeEnd);
                 overlay.remove();
             };
             overlay.addEventListener('transitionend', onFadeEnd);
-            setTimeout(() => {
-                if (document.body.contains(overlay)) {
-                    overlay.remove();
-                }
-            }, 800);
+            setTimeout(() => { if (document.body.contains(overlay)) overlay.remove(); }, 800);
         }, 300);
     };
 
     overlay.addEventListener('transitionend', onExpandEnd);
-    setTimeout(() => {
-        if (!expandHandled && document.body.contains(overlay)) {
-            onExpandEnd();
-        }
-    }, 1200);
+    setTimeout(() => { if (!expandHandled && document.body.contains(overlay)) onExpandEnd(); }, 1200);
 }
 
 function loadTheme() {
     const theme = localStorage.getItem('theme');
-    const btn = document.getElementById('themeToggle');
     if (theme === 'dark') {
         document.body.classList.add('dark');
-        btn.textContent = '☀️';
+        themeToggle.textContent = '☀️';
     } else {
         document.body.classList.remove('dark');
-        btn.textContent = '🌙';
+        themeToggle.textContent = '🌙';
     }
 }
 themeToggle.addEventListener('click', toggleTheme);
 
 // ============================================================
-//  POPUP MẬT KHẨU (SHA‑256 + SALT)
+//  POPUP MẬT KHẨU (SHA-256 + SALT)
 // ============================================================
 let isPopupClosing = false;
 
@@ -371,9 +354,8 @@ async function checkPassword() {
             addTextForm.reset();
             secretCodeGroup.classList.remove('open');
             secretError.hidden = true;
-            const sliderVal = 0;
-            difficultySlider.value = sliderVal;
-            updateSliderUI(sliderVal);
+            difficultySlider.value = 0;
+            updateSliderUI(0);
             difficultyLabel.textContent = 'Dễ';
             if (visibilityToggle) {
                 visibilityToggle.checked = false;
@@ -397,21 +379,15 @@ function showMessage(title, content) {
     messageContent.textContent = content;
     messagePopup.classList.add('active');
 }
-
-messageOkBtn.addEventListener('click', function() {
+messageOkBtn.addEventListener('click', function () {
     messagePopup.classList.remove('active');
 });
-
-messagePopup.addEventListener('click', function(e) {
-    if (e.target === this) {
-        this.classList.remove('active');
-    }
+// Dùng function thường (không phải arrow) để `this` trỏ đúng vào messagePopup
+messagePopup.addEventListener('click', function (e) {
+    if (e.target === this) this.classList.remove('active');
 });
-
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        messagePopup.classList.remove('active');
-    }
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') messagePopup.classList.remove('active');
 });
 
 // ============================================================
@@ -439,19 +415,21 @@ function showTyping(textId) {
     showScreen('typingScreen');
     setUrlTextId(textId);
     const meta = publicTexts.find(t => t.id === textId);
-    if (meta) {
-        fetchTextByFilename(meta.filename).then(data => {
-            if (data) {
-                startTypingWithData(data);
-            } else {
-                showMessage('Lỗi', 'Không thể tải văn bản này.');
-                showHome();
-            }
-        });
-    } else {
+    if (!meta) {
         showMessage('Lỗi', 'Không tìm thấy văn bản.');
         showHome();
+        return;
     }
+    fetchTextByFilename(meta.filename).then(data => {
+        if (data) {
+            isSecretMode = false;
+            currentSecretCode = null;
+            startTypingWithData(data);
+        } else {
+            showMessage('Lỗi', 'Không thể tải văn bản này.');
+            showHome();
+        }
+    });
 }
 
 function showResult() {
@@ -503,6 +481,8 @@ async function openSecretText() {
     const data = await fetchSecretText(code);
     if (data) {
         showScreen('typingScreen');
+        isSecretMode = true;
+        currentSecretCode = code;
         startTypingWithData(data);
         setUrlSecretCode(code);
     } else {
@@ -515,6 +495,11 @@ async function openSecretText() {
 //  KHỞI TẠO GÕ
 // ============================================================
 function startTypingWithData(textData) {
+    if (typingState.timerInterval) {
+        clearInterval(typingState.timerInterval);
+        typingState.timerInterval = null;
+    }
+
     const content = textData.content;
     typingState.textId = textData.id || 'unknown';
     typingState.textName = textData.name || 'Văn bản';
@@ -529,33 +514,18 @@ function startTypingWithData(textData) {
     typingState.isFinished = false;
     typingState.wpmHistory = [];
     typingState.charSpans = [];
-    if (typingState.timerInterval) {
-        clearInterval(typingState.timerInterval);
-        typingState.timerInterval = null;
-    }
     started = false;
 
-    if (typingTextarea) {
-        typingTextarea.remove();
-        typingTextarea = null;
-    }
-    if (displayContainer) {
-        displayContainer.remove();
-        displayContainer = null;
-    }
+    if (typingTextarea) { typingTextarea.remove(); typingTextarea = null; }
+    if (displayContainer) { displayContainer.remove(); displayContainer = null; }
     typingWrapper = null;
-
     textDisplay.innerHTML = '';
 
-    let notice = document.getElementById('startNotice');
-    if (!notice) {
-        notice = document.createElement('div');
-        notice.id = 'startNotice';
-        notice.className = 'start-notice';
-        notice.innerHTML = `<span class="start-message">⌨️ <strong>Bắt đầu gõ</strong> để tính thời gian</span>`;
-    } else {
-        notice.classList.remove('hidden');
-    }
+    // Thông báo bắt đầu
+    const notice = document.createElement('div');
+    notice.id = 'startNotice';
+    notice.className = 'start-notice';
+    notice.innerHTML = `<span class="start-message">⌨️ <strong>Bắt đầu gõ</strong> để tính thời gian</span>`;
     textDisplay.appendChild(notice);
 
     const wrapper = document.createElement('div');
@@ -586,23 +556,15 @@ function startTypingWithData(textData) {
     typingTextarea.disabled = false;
     wrapper.appendChild(typingTextarea);
 
-    let caretEl = document.getElementById('virtualCaret');
-    if (!caretEl) {
-        caretEl = document.createElement('div');
-        caretEl.id = 'virtualCaret';
-        caretEl.className = 'virtual-caret';
-        wrapper.appendChild(caretEl);
-    } else {
-        caretEl.classList.remove('hidden');
-        if (caretEl.parentNode !== wrapper) {
-            wrapper.appendChild(caretEl);
-        }
-    }
+    const caretEl = document.createElement('div');
+    caretEl.id = 'virtualCaret';
+    caretEl.className = 'virtual-caret';
+    wrapper.appendChild(caretEl);
 
     typingTextarea.addEventListener('input', handleTextareaInput);
-    typingTextarea.addEventListener('paste', (e) => e.preventDefault());
-    typingTextarea.addEventListener('copy', (e) => e.preventDefault());
-    typingTextarea.addEventListener('cut', (e) => e.preventDefault());
+    typingTextarea.addEventListener('paste', e => e.preventDefault());
+    typingTextarea.addEventListener('copy', e => e.preventDefault());
+    typingTextarea.addEventListener('cut', e => e.preventDefault());
 
     const diffName = getDifficultyName(textData.difficulty || 0);
     typingTitle.textContent = `${textData.name} (${diffName})`;
@@ -613,38 +575,26 @@ function startTypingWithData(textData) {
 }
 
 // ============================================================
-//  CÁC HÀM XỬ LÝ GÕ
+//  XỬ LÝ GÕ
 // ============================================================
 function startTypingSession() {
     if (started) return;
     started = true;
-
     const notice = document.getElementById('startNotice');
     if (notice) {
         notice.classList.add('hidden');
         setTimeout(() => notice.remove(), 400);
     }
-
     typingState.startTime = Date.now();
     typingState.timerInterval = setInterval(updateTimer, 100);
 }
 
 function handleTextareaInput() {
     if (typingState.isFinished) return;
-
-    if (!started) {
-        startTypingSession();
-    }
-
-    if (!typingState.startTime) {
-        typingState.startTime = Date.now();
-    }
-
+    if (!started) startTypingSession();
+    if (!typingState.startTime) typingState.startTime = Date.now();
     syncFromValue();
-
-    if (typingState.currentIndex === typingState.chars.length) {
-        finishTyping();
-    }
+    if (typingState.currentIndex === typingState.chars.length) finishTyping();
 }
 
 function syncFromValue() {
@@ -654,16 +604,12 @@ function syncFromValue() {
     const maxLen = Math.min(typedLen, chars.length);
 
     let newErrors = 0;
-    let newTypedChars = [];
-
+    const newTypedChars = [];
     for (let i = 0; i < maxLen; i++) {
-        const expected = chars[i];
-        const actual = inputText[i];
-        const isCorrect = (actual === expected);
+        const isCorrect = inputText[i] === chars[i];
         newTypedChars.push(isCorrect);
         if (!isCorrect) newErrors++;
     }
-
     typingState.currentIndex = maxLen;
     typingState.errors = newErrors;
     typingState.typedChars = newTypedChars;
@@ -674,13 +620,10 @@ function syncFromValue() {
         const ch = inputText[i];
         span.textContent = ch;
         if (ch === ' ') span.innerHTML = '&nbsp;';
-        const isCorrect = (ch === chars[i]);
+        const isCorrect = ch === chars[i];
         span.className = isCorrect ? 'char correct' : 'char wrong';
-        if (isCorrect) {
-            span.removeAttribute('data-expected');
-        } else {
-            span.dataset.expected = chars[i] === ' ' ? '␣' : chars[i];
-        }
+        if (isCorrect) span.removeAttribute('data-expected');
+        else span.dataset.expected = chars[i] === ' ' ? '␣' : chars[i];
     }
     for (let i = maxLen; i < chars.length; i++) {
         const span = spans[i];
@@ -691,9 +634,7 @@ function syncFromValue() {
 
     if (typingState.startTime && typingState.charTimestamps.length < typedLen) {
         const now = Date.now() - typingState.startTime;
-        while (typingState.charTimestamps.length < typedLen) {
-            typingState.charTimestamps.push(now);
-        }
+        while (typingState.charTimestamps.length < typedLen) typingState.charTimestamps.push(now);
     }
     if (typingState.charTimestamps.length > typedLen) {
         typingState.charTimestamps.length = typedLen;
@@ -701,9 +642,7 @@ function syncFromValue() {
 
     updateStats();
     updateProgress();
-    if (typingState.startTime) {
-        updateWpmHistory(Date.now() - typingState.startTime);
-    }
+    if (typingState.startTime) updateWpmHistory(Date.now() - typingState.startTime);
     updateVirtualCaret();
 }
 
@@ -722,42 +661,30 @@ function updateVirtualCaret() {
 
     const wrapperRect = typingWrapper.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
-    const left = (targetRect.left - wrapperRect.left) + typingWrapper.scrollLeft;
-    const top = (targetRect.top - wrapperRect.top) + typingWrapper.scrollTop;
-
-    caretEl.style.left = left + 'px';
-    caretEl.style.top = top + 'px';
+    caretEl.style.left = (targetRect.left - wrapperRect.left + typingWrapper.scrollLeft) + 'px';
+    caretEl.style.top = (targetRect.top - wrapperRect.top + typingWrapper.scrollTop) + 'px';
     caretEl.style.height = targetRect.height + 'px';
 
     const prevEditing = displayContainer.querySelector('.char.editing');
     if (prevEditing && prevEditing !== target) prevEditing.classList.remove('editing');
-    if (idx < typingTextarea.value.length) {
-        target.classList.add('editing');
-    } else if (prevEditing) {
-        prevEditing.classList.remove('editing');
-    }
+    if (idx < typingTextarea.value.length) target.classList.add('editing');
+    else if (prevEditing) prevEditing.classList.remove('editing');
 
     const caretTopInView = targetRect.top - wrapperRect.top;
     const caretBottomInView = targetRect.bottom - wrapperRect.top;
-    if (caretTopInView < 0) {
-        typingWrapper.scrollTop += caretTopInView;
-    } else if (caretBottomInView > wrapperRect.height) {
-        typingWrapper.scrollTop += (caretBottomInView - wrapperRect.height);
-    }
+    if (caretTopInView < 0) typingWrapper.scrollTop += caretTopInView;
+    else if (caretBottomInView > wrapperRect.height) typingWrapper.scrollTop += (caretBottomInView - wrapperRect.height);
 }
 
 function updateTimer() {
     if (!typingState.startTime) return;
     const elapsed = Math.floor((Date.now() - typingState.startTime) / 1000);
     typingTimer.textContent = `⏱ ${elapsed}s`;
-
     const typed = typingState.currentIndex;
     if (typed > 0 && elapsed > 0) {
         const minutes = elapsed / 60;
-        const wpm = Math.round((typed / 5) / minutes);
-        const lpm = Math.round(typed / minutes);
-        typingWpm.textContent = `⚡ ${wpm} WPM`;
-        typingLpm.textContent = `⌨️ ${lpm} LPM`;
+        typingWpm.textContent = `⚡ ${Math.round((typed / 5) / minutes)} WPM`;
+        typingLpm.textContent = `⌨️ ${Math.round(typed / minutes)} LPM`;
     }
     updateStats();
 }
@@ -771,8 +698,7 @@ function updateStats() {
     const totalTyped = typingState.typedChars.length;
     if (totalTyped > 0) {
         const correct = totalTyped - typingState.errors;
-        const acc = Math.min(100, Math.round((correct / totalTyped) * 100));
-        typingAccuracy.textContent = `🎯 ${acc}%`;
+        typingAccuracy.textContent = `🎯 ${Math.min(100, Math.round((correct / totalTyped) * 100))}%`;
     } else {
         typingAccuracy.textContent = '🎯 100%';
     }
@@ -789,14 +715,7 @@ function updateProgress() {
     const pct = Math.min(100, Math.round((typed / total) * 100));
     progressBar.style.width = pct + '%';
     progressLabel.textContent = pct + '%';
-
-    if (pct < 30) {
-        progressBar.style.background = 'var(--progress-low)';
-    } else if (pct < 70) {
-        progressBar.style.background = 'var(--progress-mid)';
-    } else {
-        progressBar.style.background = 'var(--progress-high)';
-    }
+    progressBar.style.background = pct < 30 ? 'var(--progress-low)' : pct < 70 ? 'var(--progress-mid)' : 'var(--progress-high)';
 }
 
 function updateWpmHistory(elapsed) {
@@ -860,14 +779,11 @@ function saveResult() {
     const record = {
         textId: typingState.textId,
         timestamp: Date.now(),
-        wpm,
-        lpm,
-        accuracy,
+        wpm, lpm, accuracy,
         charTimes: typingState.charTimestamps.slice()
     };
 
     appData.history.push(record);
-
     const all = appData.history.filter(h => h.textId === typingState.textId);
     if (all.length > 5) {
         all.sort((a, b) => a.timestamp - b.timestamp);
@@ -875,7 +791,6 @@ function saveResult() {
         appData.history = appData.history.filter(h => h.textId !== typingState.textId);
         appData.history.push(...keep);
     }
-
     saveData(appData);
     typingState.lastResult = record;
 }
@@ -886,7 +801,6 @@ function saveResult() {
 function renderResult() {
     const record = typingState.lastResult;
     if (!record) return;
-
     const text = publicTexts.find(t => t.id === typingState.textId);
     const displayName = (text && text.name) || typingState.textName || 'Văn bản';
     resultTextName.textContent = `📄 ${displayName}`;
@@ -903,12 +817,11 @@ function renderResult() {
     const history = appData.history.filter(h => h.textId === typingState.textId);
     historyList.innerHTML = '';
     if (history.length > 1) {
-        const others = history.slice(0, -1).reverse();
-        others.forEach((h, i) => {
+        history.slice(0, -1).reverse().forEach((h, i) => {
             const date = new Date(h.timestamp).toLocaleString();
             const div = document.createElement('div');
             div.className = 'history-item';
-            div.textContent = `#${i+1} ${h.wpm} WPM (${date})`;
+            div.textContent = `#${i + 1} ${h.wpm} WPM (${date})`;
             historyList.appendChild(div);
         });
     } else {
@@ -936,20 +849,17 @@ function drawChart(record) {
         ctx.fillStyle = textMuted;
         ctx.font = '14px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('Chưa đủ dữ liệu', width/2, height/2);
+        ctx.fillText('Chưa đủ dữ liệu', width / 2, height / 2);
         return;
     }
 
     const pad = { top: 20, bottom: 30, left: 40, right: 20 };
     const chartW = width - pad.left - pad.right;
     const chartH = height - pad.top - pad.bottom;
-
-    const times = data.map(d => d.time);
-    const maxTime = Math.max(...times) || 1;
+    const maxTime = Math.max(...data.map(d => d.time)) || 1;
     const maxWpm = Math.max(...data.map(d => d.wpm), 10);
 
     ctx.clearRect(0, 0, width, height);
-
     ctx.strokeStyle = borderColor;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -964,8 +874,7 @@ function drawChart(record) {
     data.forEach((d, i) => {
         const x = pad.left + (d.time / maxTime) * chartW;
         const y = pad.top + chartH - (d.wpm / maxWpm) * chartH;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     });
     ctx.stroke();
 
@@ -975,7 +884,7 @@ function drawChart(record) {
     const step = Math.ceil(maxTime / 4 / 1000) * 1000;
     for (let t = 0; t <= maxTime; t += step) {
         const x = pad.left + (t / maxTime) * chartW;
-        ctx.fillText((t/1000).toFixed(0)+'s', x, pad.top + chartH + 18);
+        ctx.fillText((t / 1000).toFixed(0) + 's', x, pad.top + chartH + 18);
     }
     ctx.textAlign = 'right';
     ctx.fillText(maxWpm + ' WPM', pad.left - 6, pad.top + 12);
@@ -991,13 +900,12 @@ function handleAddText(e) {
     const content = addContent.value.trim();
     const isSecret = visibilityToggle ? visibilityToggle.checked : false;
     let secret = addSecret.value.trim();
-    const difficulty = parseInt(difficultySlider.value);
+    const difficulty = parseInt(difficultySlider.value, 10);
 
     if (!name || !content) {
         showMessage('Lỗi', 'Vui lòng điền tên và nội dung.');
         return;
     }
-
     if (isSecret) {
         if (!secret) {
             secretError.hidden = false;
@@ -1008,14 +916,7 @@ function handleAddText(e) {
         secret = '';
     }
 
-    const newText = {
-        id: 'text_' + Date.now(),
-        name,
-        content,
-        secret,
-        difficulty
-    };
-
+    const newText = { id: 'text_' + Date.now(), name, content, secret, difficulty };
     const json = JSON.stringify(newText, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1031,9 +932,7 @@ function handleAddText(e) {
 1. Đặt file vào thư mục ${isSecret ? 'secret/' : 'public/'}
 2. ${isSecret ? '' : 'Thêm entry vào public/texts.json với filename tương ứng'}
 3. Push lên GitHub.`);
-    setTimeout(() => {
-        showHome();
-    }, 1000);
+    setTimeout(showHome, 1000);
 }
 
 // ============================================================
@@ -1059,7 +958,6 @@ function initSlider() {
         const percent = Math.min(1, Math.max(0, x / rect.width));
         return Math.round(percent * 3);
     }
-
     function setValue(val) {
         const clamped = Math.min(3, Math.max(0, val));
         difficultySlider.value = clamped;
@@ -1067,38 +965,15 @@ function initSlider() {
         difficultyLabel.textContent = getDifficultyName(clamped);
     }
 
-    thumb.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        e.preventDefault();
-    });
-    document.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        const val = getValueFromEvent(e);
-        setValue(val);
-    });
-    document.addEventListener('mouseup', () => {
-        isDragging = false;
-    });
+    thumb.addEventListener('mousedown', e => { isDragging = true; e.preventDefault(); });
+    document.addEventListener('mousemove', e => { if (isDragging) setValue(getValueFromEvent(e)); });
+    document.addEventListener('mouseup', () => { isDragging = false; });
 
-    thumb.addEventListener('touchstart', (e) => {
-        isDragging = true;
-        e.preventDefault();
-    });
-    document.addEventListener('touchmove', (e) => {
-        if (!isDragging) return;
-        const val = getValueFromEvent(e);
-        setValue(val);
-    });
-    document.addEventListener('touchend', () => {
-        isDragging = false;
-    });
+    thumb.addEventListener('touchstart', e => { isDragging = true; e.preventDefault(); });
+    document.addEventListener('touchmove', e => { if (isDragging) setValue(getValueFromEvent(e)); });
+    document.addEventListener('touchend', () => { isDragging = false; });
 
-    slider.addEventListener('click', (e) => {
-        if (e.target === thumb) return;
-        const val = getValueFromEvent(e);
-        setValue(val);
-    });
-
+    slider.addEventListener('click', e => { if (e.target !== thumb) setValue(getValueFromEvent(e)); });
     updateSliderUI(0);
 }
 initSlider();
@@ -1107,7 +982,7 @@ initSlider();
 //  TOGGLE CÔNG KHAI / BÍ MẬT
 // ============================================================
 if (visibilityToggle) {
-    visibilityToggle.addEventListener('change', function() {
+    visibilityToggle.addEventListener('change', function () {
         const labels = document.querySelectorAll('.toggle-label');
         if (this.checked) {
             if (labels[0]) labels[0].classList.remove('active');
@@ -1123,57 +998,66 @@ if (visibilityToggle) {
 }
 
 // ============================================================
-//  SỰ KIỆN
+//  SỰ KIỆN ĐIỀU HƯỚNG
 // ============================================================
 goTypingBtn.addEventListener('click', showSelect);
 backHomeFromSelect.addEventListener('click', showHome);
 backHomeFromAdd.addEventListener('click', showHome);
 backHomeFromResult.addEventListener('click', showHome);
+if (backHomeFromTyping) backHomeFromTyping.addEventListener('click', abortTyping);
 abortTypingBtn.addEventListener('click', abortTyping);
 
 textDisplay.addEventListener('click', () => {
-    if (typingTextarea && !typingTextarea.disabled) {
-        typingTextarea.focus();
-    }
+    if (typingTextarea && !typingTextarea.disabled) typingTextarea.focus();
 });
-retryBtn.addEventListener('click', () => {
+
+// ---- Làm lại: xử lý đúng cả văn bản công khai lẫn bí mật ----
+function retryCurrentText() {
+    if (isSecretMode && currentSecretCode) {
+        fetchSecretText(currentSecretCode).then(data => {
+            if (data) startTypingWithData(data);
+            else { showMessage('Lỗi', 'Không thể tải lại văn bản bí mật.'); showHome(); }
+        });
+        return;
+    }
     if (typingState.textId) {
         const meta = publicTexts.find(t => t.id === typingState.textId);
         if (meta) {
             fetchTextByFilename(meta.filename).then(data => {
                 if (data) startTypingWithData(data);
-                else showHome();
+                else { showMessage('Lỗi', 'Không thể tải lại văn bản.'); showHome(); }
             });
         } else {
-            showMessage('Lỗi', 'Không thể thử lại văn bản bí mật.');
+            showMessage('Lỗi', 'Không tìm thấy văn bản để làm lại.');
             showHome();
         }
-    } else {
-        showHome();
+        return;
     }
-});
+    showHome();
+}
+
+retryBtn.addEventListener('click', retryCurrentText);
+if (retryFromResultBtn) {
+    retryFromResultBtn.addEventListener('click', () => {
+        showScreen('typingScreen');
+        setTimeout(retryCurrentText, 100);
+    });
+}
+
 addTextBtn.addEventListener('click', showAdd);
 cancelAddBtn.addEventListener('click', showHome);
-
 secretGoBtn.addEventListener('click', openSecretText);
 secretCodeInput.addEventListener('keydown', e => { if (e.key === 'Enter') openSecretText(); });
-
 addTextForm.addEventListener('submit', handleAddText);
-
 popupConfirm.addEventListener('click', checkPassword);
 popupCancel.addEventListener('click', closePopup);
 popupPassword.addEventListener('keydown', e => { if (e.key === 'Enter') checkPassword(); });
 
 window.addEventListener('resize', () => {
-    if (typingScreen.classList.contains('active')) {
-        updateVirtualCaret();
-    }
+    if (typingScreen.classList.contains('active')) updateVirtualCaret();
 });
-
 document.addEventListener('selectionchange', () => {
-    if (typingTextarea && document.activeElement === typingTextarea) {
-        updateVirtualCaret();
-    }
+    if (typingTextarea && document.activeElement === typingTextarea) updateVirtualCaret();
 });
 
 // ============================================================
@@ -1184,6 +1068,8 @@ async function openFromUrlIfAny(textId, secretCode) {
         const data = await fetchSecretText(secretCode);
         if (data) {
             showScreen('typingScreen');
+            isSecretMode = true;
+            currentSecretCode = secretCode;
             startTypingWithData(data);
             setUrlSecretCode(secretCode);
         } else {
@@ -1192,12 +1078,10 @@ async function openFromUrlIfAny(textId, secretCode) {
         }
         return;
     }
-
     if (textId) {
         const meta = publicTexts.find(t => t.id === textId);
-        if (meta) {
-            showTyping(textId);
-        } else {
+        if (meta) showTyping(textId);
+        else {
             showMessage('Không tìm thấy', 'Không tìm thấy văn bản này.');
             clearUrlText();
         }
