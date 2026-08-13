@@ -12,5 +12,12 @@
         "difficulty": 1,
         "wordCount": 85,
         "filename": "laura-ca-phe.json"
+    },
+    {
+        "id": "zung_zang_zung_ze",
+        "name": "Zung Zăng Zung Zẻ",
+        "difficulty": 0,
+        "wordCount": 104,
+        "filename": "zung-zang-zung-ze.json"
     }
 ]
